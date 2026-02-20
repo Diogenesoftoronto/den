@@ -1,3 +1,5 @@
+# Default: Nix backend. For Guix, set RAILWAY_DOCKERFILE_PATH=Dockerfile.guix
+# via `railway variable set` (devbox spawn --guix does this automatically).
 [build]
 dockerfilePath = "Dockerfile"
 

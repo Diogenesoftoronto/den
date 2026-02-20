@@ -1,0 +1,99 @@
+# devbox (Guix variant) - Declarative cloud dev environment
+# Everything defined in Scheme — change guix/*.scm, rebuild, redeploy.
+#
+# The guix-daemon runs inside the container so you can use:
+#   guix shell, guix install, guix home reconfigure, guix pack
+# at runtime, just like on your local machine.
+FROM fedora:42
+
+ARG GUIX_VERSION=1.4.0
+ARG TARGETARCH
+
+# ── System dependencies ──────────────────────────────────────────
+RUN dnf install -y \
+    curl wget tar xz git stow \
+    openssh-server openssh-clients \
+    iproute iptables \
+    procps-ng which diffutils \
+    nscd \
+    && dnf clean all
+
+# ── Guix build users (required for guix-daemon) ─────────────────
+RUN groupadd --system guixbuild && \
+    for i in $(seq -w 1 10); do \
+      useradd -g guixbuild -G guixbuild \
+              -d /var/empty/guixbuilder${i} \
+              -s /sbin/nologin \
+              -c "Guix build user ${i}" \
+              --system guixbuilder${i}; \
+    done && \
+    mkdir -p /var/empty
+
+# ── Install Guix binary ─────────────────────────────────────────
+RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
+    cd /tmp && \
+    wget -q "https://ftp.gnu.org/gnu/guix/guix-binary-${GUIX_VERSION}.${ARCH}-linux.tar.xz" && \
+    tar --warning=no-timestamp -xf guix-binary-*.tar.xz && \
+    mv var/guix /var/ && mv gnu / && \
+    rm -rf /tmp/* && \
+    ln -sf /var/guix/profiles/per-user/root/current-guix/bin/guix /usr/local/bin/guix && \
+    mkdir -p ~root/.config/guix
+
+# ── Authorize substitutes (binary caches) ────────────────────────
+RUN guix archive --authorize < \
+      /var/guix/profiles/per-user/root/current-guix/share/guix/ci.guix.gnu.org.pub
+
+# ── Copy declarative configs ────────────────────────────────────
+COPY guix/channels.scm /etc/guix/channels.scm
+COPY guix/manifest.scm /etc/guix/manifest.scm
+COPY guix/home.scm     /etc/guix/home.scm
+
+# ── Pull channels & install packages from manifest ──────────────
+# Start guix-daemon temporarily during build
+RUN /var/guix/profiles/per-user/root/current-guix/bin/guix-daemon \
+      --build-users-group=guixbuild --disable-chroot & \
+    DAEMON_PID=$! && \
+    sleep 3 && \
+    guix pull -C /etc/guix/channels.scm && \
+    hash guix && \
+    guix package -m /etc/guix/manifest.scm -p /var/guix/profiles/per-user/root/devbox-profile && \
+    kill $DAEMON_PID 2>/dev/null || true
+
+# ── Tailscale ────────────────────────────────────────────────────
+RUN curl -fsSL https://tailscale.com/install.sh | sh
+
+# ── GitHub CLI ───────────────────────────────────────────────────
+RUN dnf install -y 'dnf-command(config-manager)' && \
+    dnf config-manager addrepo --from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo && \
+    dnf install -y gh && dnf clean all
+
+# ── Create dev user ──────────────────────────────────────────────
+RUN useradd -m -s /usr/bin/fish -G wheel devbox && \
+    echo "devbox ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/devbox && \
+    mkdir -p /home/devbox/.config/guix && \
+    cp /etc/guix/channels.scm /home/devbox/.config/guix/channels.scm && \
+    chown -R devbox:devbox /home/devbox
+
+# ── SSH server ───────────────────────────────────────────────────
+RUN mkdir -p /var/run/sshd && \
+    ssh-keygen -A && \
+    sed -i 's/#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+
+# ── Workspace volume ─────────────────────────────────────────────
+RUN mkdir -p /workspace && chown devbox:devbox /workspace
+
+# ── Scripts ──────────────────────────────────────────────────────
+COPY scripts/entrypoint-guix.sh /usr/local/bin/entrypoint-guix.sh
+COPY scripts/bootstrap-guix.sh /usr/local/bin/bootstrap-guix.sh
+RUN chmod +x /usr/local/bin/entrypoint-guix.sh /usr/local/bin/bootstrap-guix.sh
+
+# ── Guix profile for devbox user (link system-wide profile) ──────
+RUN mkdir -p /var/guix/profiles/per-user/devbox && \
+    ln -sf /var/guix/profiles/per-user/root/devbox-profile \
+           /var/guix/profiles/per-user/devbox/guix-profile && \
+    chown -h devbox:devbox /var/guix/profiles/per-user/devbox/guix-profile
+
+EXPOSE 22 3000 4000 5173 8000 8080
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-guix.sh"]
