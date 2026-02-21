@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "==> Bootstrapping devbox user environment..."
+echo "==> Bootstrapping den user environment..."
 
 # Clone dotfiles if not present
 if [ ! -d "$HOME/.dotfiles" ]; then

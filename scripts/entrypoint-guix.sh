@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "==> Starting devbox (Guix variant)..."
+echo "==> Starting den (Guix variant)..."
 
 # ── Guix daemon ──────────────────────────────────────────────────
 # The heart of the Guix system — enables guix shell, guix install,
@@ -14,8 +14,8 @@ sleep 2
 echo "==> guix-daemon running (guix shell, guix install, etc. available)"
 
 # Source the Guix profile so all manifest packages are on PATH
-export PATH="/var/guix/profiles/per-user/root/devbox-profile/bin:$PATH"
-export GUIX_PROFILE="/var/guix/profiles/per-user/root/devbox-profile"
+export PATH="/var/guix/profiles/per-user/root/den-profile/bin:$PATH"
+export GUIX_PROFILE="/var/guix/profiles/per-user/root/den-profile"
 export GUIX_LOCPATH="$GUIX_PROFILE/lib/locale"
 
 # ── SSH server ───────────────────────────────────────────────────
@@ -24,10 +24,11 @@ echo "==> SSH server started"
 
 # ── Tailscale ────────────────────────────────────────────────────
 if [ -n "${TAILSCALE_AUTHKEY:-}" ]; then
-    tailscaled --state=/var/lib/tailscale/tailscaled.state &
+    mkdir -p /workspace/.tailscale
+    tailscaled --state=/workspace/.tailscale/tailscaled.state &
     sleep 2
 
-    HOSTNAME="${DEVBOX_NAME:-devbox}"
+    HOSTNAME="${DEN_NAME:-den}"
     tailscale up \
         --authkey="$TAILSCALE_AUTHKEY" \
         --hostname="$HOSTNAME" \
@@ -35,20 +36,20 @@ if [ -n "${TAILSCALE_AUTHKEY:-}" ]; then
         --accept-routes
 
     echo "==> Tailscale connected as $HOSTNAME"
-    echo "==> SSH: ssh devbox@${HOSTNAME}.<your-tailnet>.ts.net"
+    echo "==> SSH: ssh den@${HOSTNAME}.<your-tailnet>.ts.net"
 else
     echo "==> TAILSCALE_AUTHKEY not set, skipping Tailscale"
 fi
 
 # ── First-boot bootstrap ────────────────────────────────────────
-if [ ! -f /home/devbox/.devbox-bootstrapped ]; then
-    su - devbox -c "/usr/local/bin/bootstrap-guix.sh"
-    touch /home/devbox/.devbox-bootstrapped
-    chown devbox:devbox /home/devbox/.devbox-bootstrapped
+if [ ! -f /home/den/.den-bootstrapped ]; then
+    su - den -c "/usr/local/bin/bootstrap-guix.sh"
+    touch /home/den/.den-bootstrapped
+    chown den:den /home/den/.den-bootstrapped
 fi
 
-echo "==> devbox (Guix) ready!"
+echo "==> den (Guix) ready!"
 echo "==> guix-daemon is running — use guix shell, guix install, guix home reconfigure"
-echo "==> Connect: ssh devbox@${DEVBOX_NAME:-devbox}.<tailnet>.ts.net"
+echo "==> Connect: ssh den@${DEN_NAME:-den}.<tailnet>.ts.net"
 
 exec tail -f /dev/null

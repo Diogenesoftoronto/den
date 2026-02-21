@@ -1,4 +1,4 @@
-;; Devbox channel definitions
+;; Den channel definitions
 ;; Edit this to change package sources. Pin with:
 ;;   guix time-machine -C channels.scm -- describe -f channels > channels-lock.scm
 (cons* (channel

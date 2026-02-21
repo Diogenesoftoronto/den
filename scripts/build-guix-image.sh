@@ -5,7 +5,7 @@
 # Usage:
 #   ./scripts/build-guix-image.sh                    # build from manifest
 #   ./scripts/build-guix-image.sh --system            # build full Guix System image
-#   ./scripts/build-guix-image.sh --push ghcr.io/user/devbox  # build and push
+#   ./scripts/build-guix-image.sh --push ghcr.io/user/den  # build and push
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -14,7 +14,7 @@ GUIX_DIR="$PROJECT_DIR/guix"
 
 MODE="pack"
 PUSH_TARGET=""
-IMAGE_NAME="devbox-guix"
+IMAGE_NAME="den-guix"
 IMAGE_TAG="latest"
 
 while [[ $# -gt 0 ]]; do
@@ -33,7 +33,7 @@ if ! guix describe &>/dev/null 2>&1; then
     exit 1
 fi
 
-echo "==> Building devbox image (mode: $MODE)..."
+echo "==> Building den image (mode: $MODE)..."
 
 if [ "$MODE" = "pack" ]; then
     # guix pack creates a relocatable Docker image from a manifest

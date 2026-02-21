@@ -1,4 +1,4 @@
-# devbox
+# den
 
 Personal cloud dev environments on Railway + Tailscale.
 
@@ -10,22 +10,25 @@ Two backends: **Nix** (Determinate) or **Guix** (fully declarative Scheme).
 
 ```fish
 # One-time setup
-devbox setup
+den setup
 
 # Spin up an environment (Nix backend, default)
-devbox spawn myproject
+den spawn myproject
 
 # Or use Guix backend — everything declared in Scheme
-devbox spawn --guix myproject
+den spawn --guix myproject
 
-# Connect (via Tailscale SSH — no keys needed)
-devbox connect myproject
+# Connect (via Tailscale SSH — no keys needed, agent forwarding enabled)
+den connect myproject
+
+# Redeploy after editing configs
+den redeploy myproject
 
 # Add a custom domain for web services
-devbox domain myproject dev.example.com
+den domain myproject dev.example.com
 
 # Done working
-devbox destroy myproject
+den destroy myproject
 ```
 
 ## Backends
@@ -52,8 +55,8 @@ guix/
 # Edit the manifest
 hx guix/manifest.scm    # add/remove packages
 
-# Redeploy (Railway rebuilds from Dockerfile.guix)
-cd ~/Projects/devbox && railway up -d
+# Redeploy
+den redeploy myproject
 ```
 
 **Runtime Guix inside the container:**
@@ -65,19 +68,24 @@ guix home reconfigure /etc/guix/home.scm  # apply home config
 guix pack -f docker -m manifest.scm       # build images inside images
 ```
 
+**Pin channels for reproducibility:**
+```bash
+guix time-machine -C channels.scm -- describe -f channels > channels-lock.scm
+```
+
 **Local build (most reproducible):**
 ```fish
 # Build Docker image using your local Guix (bit-for-bit reproducible)
-devbox build-guix                          # from manifest
-devbox build-guix --system                 # full Guix System image
-devbox build-guix --push ghcr.io/you/devbox  # build and push to registry
+den build-guix                          # from manifest
+den build-guix --system                 # full Guix System image
+den build-guix --push ghcr.io/you/den   # build and push to registry
 ```
 
 ## Architecture
 
 ```
 Local Machine (mist)
-  └── devbox.fish CLI
+  └── den.fish CLI
         ├── Railway CLI → deploys container
         └── Tailscale → SSH via WireGuard mesh
 
@@ -102,13 +110,14 @@ Railway
 | GitHub CLI | ✓ | ✓ |
 | Package manager daemon | nix-daemon | guix-daemon |
 | fzf, ripgrep, fd, bat | ✓ | ✓ |
+| mise | ✓ | ✓ |
 | Runtime packages | `nix shell` | `guix shell` |
 
 ## Custom Domains
 
 Railway provides custom domains with automatic Let's Encrypt SSL:
 
-1. `devbox domain myproject dev.example.com`
+1. `den domain myproject dev.example.com`
 2. Add the CNAME record to your DNS
 3. Railway auto-provisions SSL
 
@@ -116,5 +125,6 @@ Railway provides custom domains with automatic Let's Encrypt SSL:
 
 - [Railway account](https://railway.com) + CLI (`mise install railway`)
 - [Tailscale account](https://tailscale.com) with SSH enabled
-- Tailscale auth key (reusable, ephemeral, tagged `tag:devbox`)
+- Tailscale auth key (reusable, ephemeral, tagged `tag:den`)
 - For local Guix builds: `guix-daemon` running (`sudo systemctl start guix-daemon`)
+- Optional: `sops` + `age` for encrypted Tailscale auth key at `~/.config/sops/den-secrets.yaml`

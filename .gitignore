@@ -1,1 +1,7 @@
+# Secrets — never commit
 .env
+.env.*
+!.env.example
+
+# Railway link state
+.railway/

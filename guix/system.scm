@@ -1,4 +1,4 @@
-;; Devbox full system configuration
+;; Den full system configuration
 ;; Produces a complete Guix System Docker image.
 ;; This is the "dream" — the entire OS defined in Scheme.
 ;;
@@ -10,6 +10,7 @@
 ;;   guix time-machine -C channels.scm -- system vm system.scm
 (use-modules
  (gnu)
+ (gnu packages)
  (gnu system)
  (gnu services networking)
  (gnu services ssh)
@@ -22,7 +23,7 @@
  less base)
 
 (operating-system
- (host-name "devbox")
+ (host-name "den")
  (timezone "America/Toronto")
  (locale "en_CA.utf8")
 
@@ -56,14 +57,14 @@
  (users
   (cons*
    (user-account
-    (name "devbox")
+    (name "den")
     (group "users")
-    (home-directory "/home/devbox")
-    (shell (file-append fish "/bin/fish"))
+    (home-directory "/home/den")
+    (shell (file-append (specification->package "fish") "/bin/fish"))
     (supplementary-groups '("wheel")))
    %base-user-accounts))
 
- ;; Allow passwordless sudo for devbox
+ ;; Allow passwordless sudo for den
  (sudoers-file
   (plain-file "sudoers"
               "root ALL=(ALL) ALL
@@ -86,6 +87,4 @@
     ;; NSCD for name resolution
     (service nscd-service-type))
 
-   ;; Remove some unneeded base services for container
-   (modify-services %base-services
-     (delete guix-service-type)))))
+   %base-services)))

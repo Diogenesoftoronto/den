@@ -1,4 +1,4 @@
-;; Devbox package manifest
+;; Den package manifest
 ;; All packages for the dev environment, declared in one place.
 ;; Change this list → rebuild → redeploy = new environment.
 ;;
