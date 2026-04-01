@@ -28,6 +28,17 @@ if command -v mise &>/dev/null; then
     mise install 2>/dev/null || echo "==> Some mise tools failed, continuing"
 fi
 
+# Install crush (charmbracelet coding agent)
+if command -v crush &>/dev/null; then
+    echo "==> Crush already installed"
+elif command -v go &>/dev/null; then
+    echo "==> Installing crush agent via go install..."
+    go install github.com/charmbracelet/crush@latest 2>/dev/null || \
+        echo "==> Warning: crush install failed, install manually with: go install github.com/charmbracelet/crush@latest"
+else
+    echo "==> Go not found, skipping crush install (install go via mise, then: go install github.com/charmbracelet/crush@latest)"
+fi
+
 # Link workspace to home
 if [ -d /workspace ] && [ ! -L "$HOME/workspace" ]; then
     ln -sf /workspace "$HOME/workspace"

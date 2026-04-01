@@ -113,7 +113,56 @@ fi
 
 echo ""
 
-# ── 4. Dockerfile lint ──────────────────────────────────────
+# ── 4. Python CLI quality ───────────────────────────────────
+echo "── Python CLI quality (uv + mypy + hypothesis)"
+
+if command -v uv >/dev/null 2>&1; then
+    if (cd "$PROJECT_DIR" && uv run mypy src >/dev/null 2>&1); then
+        pass "mypy strict type-check passes"
+    else
+        fail "mypy type-check failed"
+    fi
+
+    if (cd "$PROJECT_DIR" && uv run pytest tests/python >/dev/null 2>&1); then
+        pass "pytest property tests pass"
+    else
+        fail "pytest property tests failed"
+    fi
+else
+    skip "uv not found (python quality checks skipped)"
+fi
+
+echo ""
+
+# ── 5. Dhall validation ──────────────────────────────────────
+echo "── Dhall validation"
+
+run_dhall() {
+    if command -v dhall >/dev/null 2>&1; then
+        dhall "$@"
+    elif command -v mise >/dev/null 2>&1; then
+        mise x aqua:dhall-lang/dhall-haskell@latest -- dhall "$@" 2>/dev/null
+    else
+        return 127
+    fi
+}
+
+if run_dhall --version >/dev/null 2>&1; then
+    for df in "$PROJECT_DIR"/dhall/*.dhall; do
+        name=$(basename "$df")
+        if run_dhall type --file "$df" >/dev/null 2>&1; then
+            pass "$name type-checks"
+        else
+            fail "$name type-check failed"
+        fi
+    done
+else
+    skip "dhall not found (install via: mise use -g aqua:dhall-lang/dhall-haskell@latest)"
+fi
+
+echo ""
+
+# ── 6. Dockerfile lint ──────────────────────────────────────
 echo "── Dockerfile lint (docker build --check)"
 
 for df in Dockerfile Dockerfile.guix; do
@@ -126,7 +175,7 @@ done
 
 echo ""
 
-# ── 5. No stale references ──────────────────────────────────
+# ── 7. No stale references ──────────────────────────────────
 echo "── Stale reference check"
 
 # Check all tracked files for leftover "devbox" references
@@ -145,7 +194,7 @@ fi
 
 echo ""
 
-# ── 6. Docker build + image validation ──────────────────────
+# ── 8. Docker build + image validation ──────────────────────
 if [ "$NO_BUILD" = true ]; then
     echo "── Docker build (skipped with --no-build)"
     skip "Dockerfile build"

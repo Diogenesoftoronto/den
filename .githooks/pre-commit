@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+echo "[pre-commit] den quick checks"
+bash "$PROJECT_DIR/tests/test-den.sh" --no-build
+
+if command -v dhall >/dev/null 2>&1; then
+  echo "[pre-commit] dhall type checks"
+  dhall type --file "$PROJECT_DIR/dhall/example.dhall" >/dev/null
+  dhall type --file "$PROJECT_DIR/dhall/Types.dhall" >/dev/null
+else
+  echo "[pre-commit] dhall not found; skipping Dhall type checks"
+fi

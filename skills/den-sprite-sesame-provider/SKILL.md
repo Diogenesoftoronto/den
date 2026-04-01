@@ -1,0 +1,56 @@
+---
+name: den-sprite-sesame-provider
+description: Maintain den when provisioning and lifecycle flows use the Sprite CLI on Fly and custom domains are managed through the sesame Porkbun CLI. Use when changing `den spawn`, `den domain`, MCP provisioning/operation workflows, provider-specific docs, or tests that depend on Sprite URLs and Porkbun domain forwarding.
+---
+
+# Den Sprite Sesame Provider
+
+Use this skill when den should behave as a Sprite-backed environment manager instead of a Railway-backed deploy tool.
+
+## Workflow
+
+1. Inspect both [src/den_cli/cli.py](../../src/den_cli/cli.py) and [src/den_cli/mcp_server.py](../../src/den_cli/mcp_server.py) before editing.
+2. Keep shared provider logic in [src/den_cli/core.py](../../src/den_cli/core.py) when it is reused by both CLI and MCP code.
+3. Prefer the actual installed CLIs for behavior discovery:
+   - `sprite --help`
+   - `sprite create --help`
+   - `sprite url --help`
+   - `/home/diogenes/sesame/target/release/sesame --help`
+4. Validate with:
+   - `uv run mypy src`
+   - `uv run pytest tests/python`
+5. Update docs only after the runtime code and tests are coherent.
+
+## Provider Rules
+
+- Treat Sprite as the source of truth for environment lifecycle.
+- Use `sprite_command(...)` from [src/den_cli/core.py](../../src/den_cli/core.py) instead of rebuilding org/sprite flags ad hoc.
+- Do not assume Sprite supports Railway-style `redeploy`, `logs`, env var mutation, or volume management unless the installed CLI confirms it.
+- If a Railway capability has no Sprite equivalent, return or raise an explicit unsupported-action message instead of inventing behavior.
+
+## Domain Rules
+
+- Resolve the sesame binary with `resolve_sesame_command()` from [src/den_cli/core.py](../../src/den_cli/core.py).
+- Use `parse_sprite_url(...)` to extract the Sprite public URL from CLI output.
+- Use `split_custom_domain(...)` before building Porkbun commands so owned zones like `dev.example.com` are preferred over naive last-two-label splitting.
+- Current domain behavior is URL forwarding through sesame, not native Fly certificate/domain attachment.
+- If the domain action requires public access, set Sprite URL auth to `public` first and only then add the Porkbun forward.
+
+## Test Guidance
+
+- Keep property tests provider-agnostic unless a provider-specific helper is under test.
+- For Sprite URL tests, restrict generated names to hostname-safe characters.
+- When changing domain parsing, add tests for:
+  - apex domains
+  - nested owned zones
+  - fallback to the registrable-looking suffix
+
+## Files To Check
+
+- [src/den_cli/cli.py](../../src/den_cli/cli.py)
+- [src/den_cli/mcp_server.py](../../src/den_cli/mcp_server.py)
+- [src/den_cli/core.py](../../src/den_cli/core.py)
+- [tests/python/test_core_properties.py](../../tests/python/test_core_properties.py)
+- [README.md](../../README.md)
+- [docs/mcp-server.md](../../docs/mcp-server.md)
+- [docs/workflows.md](../../docs/workflows.md)

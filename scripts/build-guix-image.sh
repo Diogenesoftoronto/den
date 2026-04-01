@@ -40,7 +40,7 @@ if [ "$MODE" = "pack" ]; then
     # This is faster and produces a minimal image with just your packages
     echo "==> Building with guix pack (manifest-based)..."
 
-    IMAGE_FILE=$(guix time-machine -C "$GUIX_DIR/channels.scm" -- \
+    IMAGE_FILE=$(guix time-machine --disable-authentication -C "$GUIX_DIR/channels.scm" -- \
         pack -f docker \
         --symlink=/bin=bin \
         --symlink=/sbin=sbin \
@@ -62,7 +62,7 @@ elif [ "$MODE" = "system" ]; then
     # More complete but heavier — includes init system, guix-daemon, etc.
     echo "==> Building with guix system image (full OS)..."
 
-    IMAGE_FILE=$(guix time-machine -C "$GUIX_DIR/channels.scm" -- \
+    IMAGE_FILE=$(guix time-machine --disable-authentication -C "$GUIX_DIR/channels.scm" -- \
         system image \
         --image-type=docker \
         "$GUIX_DIR/system.scm")

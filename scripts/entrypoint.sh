@@ -16,7 +16,8 @@ echo "==> SSH server started"
 # Start Tailscale
 if [ -n "${TAILSCALE_AUTHKEY:-}" ]; then
     mkdir -p /workspace/.tailscale
-    tailscaled --state=/workspace/.tailscale/tailscaled.state &
+    # Railway containers generally do not expose /dev/net/tun; run in userspace mode.
+    tailscaled --tun=userspace-networking --state=/workspace/.tailscale/tailscaled.state &
     sleep 2
 
     HOSTNAME="${DEN_NAME:-den}"

@@ -1,0 +1,47 @@
+name: den-smoke
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dhall
+        run: |
+          curl -fsSL https://github.com/dhall-lang/dhall-haskell/releases/download/1.42.1/dhall-1.42.1-x86_64-linux.tar.bz2 | tar -xj -C /usr/local/bin --strip-components=2 ./bin/dhall
+
+      - name: Syntax + lightweight checks
+        run: |
+          bash tests/test-den.sh --no-build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Full container smoke test
+        run: |
+          bash tests/test-den.sh

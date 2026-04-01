@@ -3,5 +3,10 @@
 .env.*
 !.env.example
 
-# Railway link state
-.railway/
+# Build/deploy artifacts
+__pycache__/
+
+# Python tooling
+.venv/
+.pytest_cache/
+.hypothesis/

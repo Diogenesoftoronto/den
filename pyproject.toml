@@ -1,0 +1,41 @@
+[project]
+name = "den"
+version = "0.2.0"
+description = "den CLI for Sprite/Fly provisioning with sesame/Porkbun domains"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "fastmcp>=3.0.2",
+  "typer>=0.23.1",
+]
+
+[project.scripts]
+den-py = "den_cli.cli:main"
+den-mcp = "den_cli.mcp_server:main"
+
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+  "antithesis>=0.2.0",
+  "hypothesis>=6.139.0",
+  "mypy>=1.18.2",
+  "pytest>=8.4.2",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-q"
+testpaths = ["tests/python"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/den_cli"]
