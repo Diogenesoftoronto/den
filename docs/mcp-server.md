@@ -30,6 +30,10 @@ Does all of this:
 - optionally makes the Sprite URL public
 - optionally adds a Porkbun URL forward via sesame
 
+Important:
+- the domain path here is forwarding, not canonical custom-host TLS on the Fly edge
+- if you need the real host to stay in the browser URL bar, that requires direct DNS plus edge certificate management outside the current MCP tool surface
+
 ## 2. `operate_den`
 
 Purpose: lifecycle operations workflow.

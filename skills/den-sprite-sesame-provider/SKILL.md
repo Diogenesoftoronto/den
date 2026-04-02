@@ -20,6 +20,7 @@ Use this skill when den should behave as a Sprite-backed environment manager ins
    - `uv run mypy src`
    - `uv run pytest tests/python`
 5. Update docs only after the runtime code and tests are coherent.
+6. For non-interactive deploy automation, prefer `den deploy --no-run` plus a detached remote process launcher such as `tmux`; the interactive `den deploy` run path is for live sessions, not CI.
 
 ## Provider Rules
 
@@ -27,6 +28,7 @@ Use this skill when den should behave as a Sprite-backed environment manager ins
 - Use `sprite_command(...)` from [src/den_cli/core.py](../../src/den_cli/core.py) instead of rebuilding org/sprite flags ad hoc.
 - Do not assume Sprite supports Railway-style `redeploy`, `logs`, env var mutation, or volume management unless the installed CLI confirms it.
 - If a Railway capability has no Sprite equivalent, return or raise an explicit unsupported-action message instead of inventing behavior.
+- If repository sync is involved, verify it against the real Sprite CLI. `sprite exec --file` is not a safe assumption for production sync behavior.
 
 ## Domain Rules
 
@@ -35,6 +37,11 @@ Use this skill when den should behave as a Sprite-backed environment manager ins
 - Use `split_custom_domain(...)` before building Porkbun commands so owned zones like `dev.example.com` are preferred over naive last-two-label splitting.
 - Current domain behavior is URL forwarding through sesame, not native Fly certificate/domain attachment.
 - If the domain action requires public access, set Sprite URL auth to `public` first and only then add the Porkbun forward.
+- Do not claim a custom domain is canonical HTTPS unless the DNS points at the Sprite/Fly edge and the edge certificate for that hostname is provisioned. A Porkbun URL forward is still a redirect.
+- For apex-domain cutovers, separate the concerns explicitly:
+  - edge certificate/domain attachment
+  - DNS ALIAS/CNAME move away from Porkbun forward hosts
+  - app-level host allowance
 
 ## Test Guidance
 

@@ -104,6 +104,11 @@ Add a custom domain:
 den domain myproject dev.example.com
 ```
 
+Canonical custom-domain note:
+
+- `den domain` currently creates a Porkbun URL forward.
+- If you need `https://example.com` to remain in the browser URL bar, point DNS directly at the Sprite/Fly edge and provision the matching edge certificate first.
+
 Toggle public/org-authenticated Sprite URL:
 
 ```bash
@@ -111,7 +116,23 @@ den funnel myproject        # make public
 den funnel myproject --off  # revert to org-auth
 ```
 
-## 6. Build a Guix image locally
+## 6. Push-based CI deploys
+
+For CI, do not use the long-running interactive `den deploy` execution path directly.
+
+Preferred pattern:
+
+```bash
+den deploy /path/to/repo --name myproject --no-run
+sprite -s den-myproject exec -- sh -lc 'tmux new-session -d -s myproject "cd /home/sprite/repo-* && bun install --frozen-lockfile && bun run dev"'
+```
+
+This keeps sync and process lifetime separate:
+
+- `den deploy --no-run` handles repository sync into the sprite.
+- `sprite exec` starts the app in a detached `tmux` session so CI can exit without killing the server.
+
+## 7. Build a Guix image locally
 
 ```bash
 den build-guix                          # from manifest
@@ -119,13 +140,13 @@ den build-guix --system                 # full Guix System image
 den build-guix --push ghcr.io/you/den   # build and push to registry
 ```
 
-## 7. Tear down
+## 8. Tear down
 
 ```bash
 den destroy myproject
 ```
 
-## 8. Local quality/verification loop
+## 9. Local quality/verification loop
 
 Python checks:
 

@@ -677,29 +677,30 @@ def test_sync_repo_to_sprite_builds_tar_and_execs(monkeypatch, tmp_path) -> None
     (repo / "node_modules").mkdir()
     (repo / "node_modules" / "pkg").write_text("")
 
-    calls: list[list[str]] = []
+    calls: list[tuple[list[str], bytes | None]] = []
 
-    def fake_run_checked(
+    def fake_run_checked_binary(
         cmd: list[str],
         *,
         cwd=None,
         capture_output: bool = False,
         error_hint: str | None = None,
-        input_text: str | None = None,
+        input_bytes: bytes | None = None,
     ) -> object:
-        calls.append(cmd)
+        del cwd, capture_output, error_hint
+        calls.append((cmd, input_bytes))
         return object()
 
-    monkeypatch.setattr(cli, "_run_checked", fake_run_checked)
+    monkeypatch.setattr(cli, "_run_checked_binary", fake_run_checked_binary)
 
     result = cli._sync_repo_to_sprite("test", repo)
 
     assert result.startswith("/home/sprite/myrepo-")
     assert len(calls) == 1
-    # The sprite exec command should include --file for the tar upload
-    assert "--file" in calls[0]
-    # Verify the command uses sprite exec
-    assert "exec" in calls[0]
+    command, archive_bytes = calls[0]
+    assert command[:5] == ["sprite", "-s", "den-test", "exec", "--"]
+    assert archive_bytes is not None
+    assert archive_bytes
 
 
 def test_deploy_allows_explicit_command_override(monkeypatch, tmp_path) -> None:

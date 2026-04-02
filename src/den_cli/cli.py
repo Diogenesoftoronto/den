@@ -94,6 +94,34 @@ def _run_checked(
     return proc
 
 
+def _run_checked_binary(
+    cmd: list[str],
+    *,
+    cwd: Path | None = None,
+    capture_output: bool = False,
+    error_hint: str | None = None,
+    input_bytes: bytes | None = None,
+) -> subprocess.CompletedProcess[bytes]:
+    proc = subprocess.run(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        input=input_bytes,
+        capture_output=capture_output,
+        check=False,
+    )
+    if proc.returncode != 0:
+        if error_hint:
+            typer.secho(error_hint, fg=typer.colors.RED)
+        stderr = proc.stderr.decode(errors="replace").strip() if proc.stderr else ""
+        stdout = proc.stdout.decode(errors="replace").strip() if proc.stdout else ""
+        if stderr:
+            typer.echo(stderr)
+        if stdout and not stderr:
+            typer.echo(stdout)
+        raise CommandError(f"command failed: {' '.join(cmd)}")
+    return proc
+
+
 def _command_exists(name: str) -> bool:
     return _run(["bash", "-lc", f"command -v {name}"], capture_output=True).returncode == 0
 
@@ -171,22 +199,18 @@ def _sync_repo_to_sprite(name: str, repo_dir: Path) -> str:
                     continue
                 archive.add(candidate, arcname=Path(repo_dir.name) / relative, recursive=False)
 
-        remote_archive = f"/tmp/{repo_dir.name}-{nonce}.tar"
+        remote_archive = f"/home/sprite/{repo_dir.name}-{nonce}.tar"
         unpack_command = (
             f"mkdir -p {shlex.quote(remote_dir)} "
-            f"&& tar -xf {shlex.quote(remote_archive)} -C {shlex.quote(remote_dir)} --strip-components=1"
+            f"&& cat > {shlex.quote(remote_archive)} "
+            f"&& tar -xf {shlex.quote(remote_archive)} -C {shlex.quote(remote_dir)} --strip-components=1 "
+            f"&& rm -f {shlex.quote(remote_archive)}"
         )
-        _run_checked(
+        _run_checked_binary(
             sprite_command(
-                "exec",
-                "--file",
-                f"{archive_path}:{remote_archive}",
-                "--",
-                "sh",
-                "-lc",
-                unpack_command,
-                sprite_name=den_name,
+                "exec", "--", "sh", "-lc", unpack_command, sprite_name=den_name
             ),
+            input_bytes=archive_path.read_bytes(),
             error_hint="Sprite source sync failed.",
         )
     return remote_dir
