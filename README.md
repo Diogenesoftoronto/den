@@ -16,6 +16,18 @@ cd den
 cargo install --path crates/den-cli
 ```
 
+For a one-command installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Diogenesoftoronto/den/main/scripts/install.sh | bash
+```
+
+Optional environment flags:
+
+- `DEN_INSTALL_MCP=1` also installs `den-mcp`
+- `DEN_FORCE=0` skips `cargo install --force`
+- `DEN_REPO_URL=...` installs from a fork
+
 That installs `den` into `~/.cargo/bin`. Make sure that directory is on your `PATH`.
 
 Verify the install:
