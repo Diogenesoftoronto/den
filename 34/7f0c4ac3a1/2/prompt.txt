@@ -1,0 +1,21 @@
+hey i would like you to get den working on den.dio.computer, right now i get 404s
+
+---
+
+can we just use den itself to do this
+
+---
+
+use the den command
+
+---
+
+just which den
+
+---
+
+implement it
+
+---
+
+forwarding through sesame should work as well as well as native dns hosting
