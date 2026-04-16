@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "347f0c4ac3a1",
+  "session_id": "e1e16303-7e79-4382-91aa-3e78372bd5be",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-16T06:16:19.135540269Z",
+  "branch": "feature/sprite-sesame-provider",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "src/den_cli/cli.py",
+    "src/den_cli/core.py",
+    "src/den_cli/mcp_server.py",
+    "tests/python/test_cli_commands.py",
+    "tests/python/test_core_properties.py",
+    "tests/python/test_mcp_server.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "0a00c215973d",
+  "token_usage": {
+    "input_tokens": 1481,
+    "cache_creation_tokens": 98912,
+    "cache_read_tokens": 110370,
+    "output_tokens": 7061,
+    "api_call_count": 2
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-16T06:16:18.186798772Z",
+    "agent_lines": 2775,
+    "human_added": 11266,
+    "human_modified": 51,
+    "human_removed": 0,
+    "total_committed": 14061,
+    "agent_percentage": 19.735438446767656
+  }
+}
