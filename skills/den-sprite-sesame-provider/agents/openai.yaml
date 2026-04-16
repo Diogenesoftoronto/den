@@ -1,4 +1,4 @@
 interface:
   display_name: "Den Sprite Sesame"
-  short_description: "Den Sprite and sesame workflow."
-  default_prompt: "Use this skill when modifying den to provision environments with the Sprite CLI and manage custom domains with the sesame Porkbun CLI."
+  short_description: "Den Sprite plus sesame forwarding workflow"
+  default_prompt: "Use this skill when modifying den's Sprite-backed runtime flows or sesame-based Porkbun forwarding behavior."

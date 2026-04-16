@@ -49,6 +49,30 @@ If you do not already have the toolchains:
 - [Telemetry posture](docs/telemetry.md)
 - [Self-hosted runtime](docs/selfhosted-runtime.md)
 
+## Skills
+
+This repo now publishes installable agent skills in [`skills/`](/home/diogenes/Projects/den/skills).
+
+List available skills from GitHub:
+
+```bash
+npx skills add Diogenesoftoronto/den --list
+```
+
+Install the main den skill:
+
+```bash
+npx skills add Diogenesoftoronto/den --skill den
+```
+
+Install the provider-specific Sprite plus sesame skill:
+
+```bash
+npx skills add Diogenesoftoronto/den --skill den-sprite-sesame-provider
+```
+
+The `npx skills` CLI discovers skills in `skills/` by `SKILL.md` frontmatter name, so keep the directory contents committed and the frontmatter accurate.
+
 ## Quick Start
 
 ```fish

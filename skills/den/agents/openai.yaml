@@ -1,0 +1,4 @@
+interface:
+  display_name: "Den"
+  short_description: "Work on den's Rust CLI and MCP runtime or domain workflows"
+  default_prompt: "Use this skill when modifying den's Rust CLI or Rust MCP workflows for Sprite, Railway, Cloudflare, sesame/Porkbun, or the self-hosted runtime design."
