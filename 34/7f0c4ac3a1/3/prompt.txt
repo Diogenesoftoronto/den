@@ -1,0 +1,9 @@
+I want to deduplicate the code here. find a way to decrease it. Add support for zrok.
+
+---
+
+rewrite this in rust, here is this repository, the cli, core, and mcp server. use property based testing to check. a plan makes complete sense
+
+---
+
+cont
