@@ -3,13 +3,18 @@
   "checkpoint_id": "347f0c4ac3a1",
   "strategy": "manual-commit",
   "branch": "feature/sprite-sesame-provider",
-  "checkpoints_count": 1,
+  "checkpoints_count": 6,
   "files_touched": [
     "README.md",
+    "docs/mcp-server.md",
+    "docs/roadmap.md",
+    "docs/workflows.md",
     "src/den_cli/cli.py",
     "src/den_cli/core.py",
     "src/den_cli/mcp_server.py",
-    "tests/python/test_core_properties.py"
+    "tests/python/test_cli_commands.py",
+    "tests/python/test_core_properties.py",
+    "tests/python/test_mcp_server.py"
   ],
   "sessions": [
     {
@@ -17,13 +22,19 @@
       "transcript": "/34/7f0c4ac3a1/0/full.jsonl",
       "content_hash": "/34/7f0c4ac3a1/0/content_hash.txt",
       "prompt": "/34/7f0c4ac3a1/0/prompt.txt"
+    },
+    {
+      "metadata": "/34/7f0c4ac3a1/1/metadata.json",
+      "transcript": "/34/7f0c4ac3a1/1/full.jsonl",
+      "content_hash": "/34/7f0c4ac3a1/1/content_hash.txt",
+      "prompt": "/34/7f0c4ac3a1/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 3,
-    "cache_creation_tokens": 84801,
-    "cache_read_tokens": 11936,
-    "output_tokens": 2484,
-    "api_call_count": 1
+    "input_tokens": 21,
+    "cache_creation_tokens": 224249,
+    "cache_read_tokens": 738843,
+    "output_tokens": 13616,
+    "api_call_count": 7
   }
 }
