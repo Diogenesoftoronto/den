@@ -3,7 +3,7 @@
   "checkpoint_id": "347f0c4ac3a1",
   "strategy": "manual-commit",
   "branch": "feature/sprite-sesame-provider",
-  "checkpoints_count": 15,
+  "checkpoints_count": 16,
   "files_touched": [
     "README.md",
     "docs/mcp-server.md",
@@ -52,13 +52,19 @@
       "transcript": "/34/7f0c4ac3a1/5/full.jsonl",
       "content_hash": "/34/7f0c4ac3a1/5/content_hash.txt",
       "prompt": "/34/7f0c4ac3a1/5/prompt.txt"
+    },
+    {
+      "metadata": "/34/7f0c4ac3a1/6/metadata.json",
+      "transcript": "/34/7f0c4ac3a1/6/full.jsonl",
+      "content_hash": "/34/7f0c4ac3a1/6/content_hash.txt",
+      "prompt": "/34/7f0c4ac3a1/6/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 373,
-    "cache_creation_tokens": 589063,
-    "cache_read_tokens": 5481845,
-    "output_tokens": 68611,
-    "api_call_count": 97
+    "input_tokens": 376,
+    "cache_creation_tokens": 676552,
+    "cache_read_tokens": 5493781,
+    "output_tokens": 70758,
+    "api_call_count": 98
   }
 }
