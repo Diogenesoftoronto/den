@@ -8,7 +8,40 @@ from typing import Any, Literal, TypedDict
 
 from fastmcp import FastMCP
 
-from den_cli.core import discover_porkbun_domains_from_sesame_config, normalize_den_name, parse_sprite_url, resolve_sesame_command, split_custom_domain, sprite_command
+from den_cli.core import (
+    DomainMode,
+    DomainProvider,
+    DnsRecord,
+    RuntimeProvider,
+    build_sesame_dns_create_command,
+    build_sesame_dns_edit_command,
+    build_sesame_dns_list_command,
+    build_sesame_url_forward_command,
+    discover_cloudflare_domains,
+    discover_porkbun_domains_from_sesame_config,
+    extract_railway_linked_project_name,
+    find_checkpoint_version_in_api_output,
+    find_checkpoint_version_in_list_output,
+    make_sprite_redeploy_comment,
+    parse_railway_service_statuses,
+    fly_certs_add_command,
+    normalize_den_name,
+    parse_fly_dns_records,
+    parse_railway_projects,
+    parse_railway_dns_records,
+    parse_sprite_url,
+    railway_delete_command,
+    railway_domain_attach_command,
+    railway_list_command,
+    railway_status_command,
+    resolve_custom_domain,
+    resolve_sesame_command,
+    sesame_dns_records_exist,
+    sprite_checkpoint_create_command,
+    sprite_command,
+    sprite_restore_command,
+    upsert_cloudflare_dns_records,
+)
 
 PROJECT_DIR = Path.home() / "Projects" / "den"
 
@@ -138,7 +171,11 @@ def _result(
 
 
 def _sesame_owned_domains() -> list[str]:
-    step = _run_step("sesame_domain_list", _sesame_command() + ["domain", "list", "--all", "--json"], cwd=None, timeout_s=30)
+    try:
+        command = _sesame_command() + ["domain", "list", "--all", "--json"]
+    except FileNotFoundError:
+        return discover_porkbun_domains_from_sesame_config()
+    step = _run_step("sesame_domain_list", command, cwd=None, timeout_s=30)
     if not step["ok"] or not step["stdout"].strip():
         return discover_porkbun_domains_from_sesame_config()
     try:
@@ -158,22 +195,207 @@ def _sesame_owned_domains() -> list[str]:
     return domains or discover_porkbun_domains_from_sesame_config()
 
 
+def _configured_domain_zones() -> dict[DomainProvider, list[str]]:
+    return {
+        DomainProvider.cloudflare: discover_cloudflare_domains(),
+        DomainProvider.sesame: _sesame_owned_domains(),
+    }
+
+
+def _railway_list_step() -> StepResult:
+    return _run_step("railway_list_projects", railway_list_command(), cwd=PROJECT_DIR, timeout_s=30)
+
+
+def _railway_status_step() -> StepResult:
+    return _run_step("railway_status", railway_status_command(), cwd=PROJECT_DIR, timeout_s=30)
+
+
 def _sesame_url_forward_command(custom_domain: str, target_url: str) -> list[str]:
-    zone, subdomain = split_custom_domain(custom_domain, owned_domains=_sesame_owned_domains())
-    command = _sesame_command() + [
-        "domain",
-        "add-url-forward",
-        zone,
-        "--location",
-        target_url,
-        "--type",
-        "permanent",
-        "--include-path",
-        "yes",
-    ]
-    if subdomain:
-        command.extend(["--subdomain", subdomain])
-    return command
+    provider_domains = _configured_domain_zones()
+    match = resolve_custom_domain(custom_domain, provider_domains)
+    if match.provider is DomainProvider.cloudflare:
+        raise ValueError(
+            f"{custom_domain} is held by Cloudflare. Use domain_mode='dns' for Cloudflare-managed zones; forward mode is reserved for sesame/Porkbun-hosted zones."
+        )
+    if match.provider is not DomainProvider.sesame:
+        raise ValueError(f"Unsupported domain provider for {custom_domain}: {match.provider.value}")
+    owned_domains = provider_domains[DomainProvider.sesame]
+    return _sesame_command() + build_sesame_url_forward_command(custom_domain, target_url, owned_domains)
+
+
+def _cloudflare_dns_attach_step(den_name: str, custom_domain: str, zone: str, *, proxied: bool) -> StepResult:
+    add_step = _run_step(
+        "fly_certs_add",
+        fly_certs_add_command(den_name, custom_domain),
+        cwd=PROJECT_DIR,
+        timeout_s=60,
+    )
+    if not add_step["ok"]:
+        return add_step
+
+    try:
+        payload = json.loads(add_step["stdout"])
+        records = parse_fly_dns_records(custom_domain, zone, payload, proxied=proxied)
+        applied = upsert_cloudflare_dns_records(zone, records)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return {
+            "step": "cloudflare_dns_upsert",
+            "command": ["cloudflare-api", "dns-records", zone],
+            "cwd": str(Path.home()),
+            "ok": False,
+            "exit_code": 1,
+            "timed_out": False,
+            "duration_ms": 0,
+            "stdout": add_step["stdout"],
+            "stderr": str(exc),
+        }
+
+    return {
+        "step": "cloudflare_dns_upsert",
+        "command": ["cloudflare-api", "dns-records", zone],
+        "cwd": str(Path.home()),
+        "ok": True,
+        "exit_code": 0,
+        "timed_out": False,
+        "duration_ms": 0,
+        "stdout": json.dumps(applied),
+        "stderr": "",
+    }
+
+
+def _cloudflare_dns_attach_step_for_railway(service: str, custom_domain: str, zone: str, *, proxied: bool, port: int | None) -> StepResult:
+    add_step = _run_step(
+        "railway_domain_attach",
+        railway_domain_attach_command(service, custom_domain, port=port),
+        cwd=PROJECT_DIR,
+        timeout_s=60,
+    )
+    if not add_step["ok"]:
+        return add_step
+
+    try:
+        payload = json.loads(add_step["stdout"])
+        records = parse_railway_dns_records(custom_domain, zone, payload, proxied=proxied)
+        applied = upsert_cloudflare_dns_records(zone, records)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return {
+            "step": "cloudflare_dns_upsert",
+            "command": ["cloudflare-api", "dns-records", zone],
+            "cwd": str(Path.home()),
+            "ok": False,
+            "exit_code": 1,
+            "timed_out": False,
+            "duration_ms": 0,
+            "stdout": add_step["stdout"],
+            "stderr": str(exc),
+        }
+
+    return {
+        "step": "cloudflare_dns_upsert",
+        "command": ["cloudflare-api", "dns-records", zone],
+        "cwd": str(Path.home()),
+        "ok": True,
+        "exit_code": 0,
+        "timed_out": False,
+        "duration_ms": 0,
+        "stdout": json.dumps(applied),
+        "stderr": "",
+    }
+
+
+def _sesame_dns_upsert_step(zone: str, records: list[DnsRecord]) -> StepResult:
+    try:
+        sesame_cmd = _sesame_command()
+    except FileNotFoundError:
+        return {
+            "step": "sesame_dns_upsert",
+            "command": ["sesame", "dns"],
+            "cwd": str(Path.home()),
+            "ok": False,
+            "exit_code": None,
+            "timed_out": False,
+            "duration_ms": 0,
+            "stdout": "",
+            "stderr": "sesame is not on PATH and no local build was found",
+        }
+
+    applied: list[dict[str, object]] = []
+    for record in records:
+        lookup_step = _run_step(
+            "sesame_dns_lookup",
+            sesame_cmd + build_sesame_dns_list_command(zone, record),
+            cwd=None,
+            timeout_s=30,
+        )
+        if not lookup_step["ok"]:
+            return lookup_step
+        try:
+            lookup_payload = json.loads(lookup_step["stdout"] or "[]")
+        except json.JSONDecodeError as exc:
+            return {
+                "step": "sesame_dns_upsert",
+                "command": sesame_cmd + build_sesame_dns_list_command(zone, record),
+                "cwd": str(Path.home()),
+                "ok": False,
+                "exit_code": 1,
+                "timed_out": False,
+                "duration_ms": 0,
+                "stdout": lookup_step["stdout"],
+                "stderr": f"sesame returned malformed JSON while listing DNS records: {exc}",
+            }
+
+        if sesame_dns_records_exist(lookup_payload):
+            command = sesame_cmd + build_sesame_dns_edit_command(zone, record)
+            action = "updated"
+        else:
+            command = sesame_cmd + build_sesame_dns_create_command(zone, record)
+            action = "created"
+
+        write_step = _run_step("sesame_dns_upsert", command, cwd=None, timeout_s=30)
+        if not write_step["ok"]:
+            return write_step
+        applied.append({"action": action, "record": {"type": record.type, "name": record.name, "content": record.content}})
+
+    return {
+        "step": "sesame_dns_upsert",
+        "command": ["sesame", "dns", "upsert", zone],
+        "cwd": str(Path.home()),
+        "ok": True,
+        "exit_code": 0,
+        "timed_out": False,
+        "duration_ms": 0,
+        "stdout": json.dumps(applied),
+        "stderr": "",
+    }
+
+
+def _sesame_dns_attach_step_for_railway(service: str, custom_domain: str, zone: str, *, port: int | None) -> StepResult:
+    add_step = _run_step(
+        "railway_domain_attach",
+        railway_domain_attach_command(service, custom_domain, port=port),
+        cwd=PROJECT_DIR,
+        timeout_s=60,
+    )
+    if not add_step["ok"]:
+        return add_step
+
+    try:
+        payload = json.loads(add_step["stdout"])
+        records = parse_railway_dns_records(custom_domain, zone, payload, proxied=False)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return {
+            "step": "sesame_dns_upsert",
+            "command": ["sesame", "dns", zone],
+            "cwd": str(Path.home()),
+            "ok": False,
+            "exit_code": 1,
+            "timed_out": False,
+            "duration_ms": 0,
+            "stdout": add_step["stdout"],
+            "stderr": str(exc),
+        }
+
+    return _sesame_dns_upsert_step(zone, records)
 
 
 @mcp.tool
@@ -182,13 +404,19 @@ def provision_den(
     backend: Literal["nix", "guix"] = "nix",
     tailscale_authkey: str | None = None,
     custom_domain: str | None = None,
+    domain_mode: Literal["dns", "forward"] = "dns",
+    proxied: bool = False,
+    runtime: Literal["sprite", "railway"] = "sprite",
+    port: int | None = None,
 ) -> dict[str, Any]:
     """Provision workflow: prerequisites + spawn + optional domain in one call."""
     del tailscale_authkey
     steps: list[StepResult] = []
     den_name = normalize_den_name(name)
 
-    for cmd in ("sprite",):
+    runtime_provider = RuntimeProvider(runtime)
+    required_commands = ("sprite",) if runtime_provider is RuntimeProvider.sprite else ("railway",)
+    for cmd in required_commands:
         exists = _command_exists(cmd)
         if not exists:
             return _result(
@@ -211,31 +439,6 @@ def provision_den(
                 },
             )
 
-    try:
-        sesame_cmd = _sesame_command()
-    except FileNotFoundError:
-        sesame_cmd = []
-    if custom_domain and not sesame_cmd:
-        return _result(
-            "provision_den",
-            False,
-            steps=steps,
-            error={
-                "kind": "missing_dependency",
-                "message": "sesame is required when custom_domain is provided",
-                "failing_step": "preflight",
-                "command": ["sesame", "--help"],
-                "exit_code": None,
-                "timed_out": False,
-                "stdout": "",
-                "stderr": "sesame is not on PATH and no local build was found",
-                "remediation": [
-                    "Build or install sesame.",
-                    "Or omit custom_domain and configure the domain later.",
-                ],
-            },
-        )
-
     if not PROJECT_DIR.is_dir():
         return _result(
             "provision_den",
@@ -257,27 +460,46 @@ def provision_den(
             },
         )
 
-    sprite_auth = _run_step("sprite_list", sprite_command("list"), cwd=PROJECT_DIR, timeout_s=20)
-    steps.append(sprite_auth)
-    if not sprite_auth["ok"]:
-        return _result(
-            "provision_den",
-            False,
-            steps=steps,
-            error=_build_error(
-                sprite_auth,
-                "Sprite authentication check failed.",
-                [
-                    "Run: sprite login",
-                    "Verify you can run: sprite list",
-                    "Retry provision_den after successful login",
-                ],
-            ),
-        )
-
-    command_plan: list[tuple[str, list[str], Path | None, int, str | None]] = [
-        ("sprite_create", sprite_command("create", "-skip-console"), PROJECT_DIR, 180, f"{den_name}\n"),
-    ]
+    if runtime_provider is RuntimeProvider.sprite:
+        sprite_auth = _run_step("sprite_list", sprite_command("list"), cwd=PROJECT_DIR, timeout_s=20)
+        steps.append(sprite_auth)
+        if not sprite_auth["ok"]:
+            return _result(
+                "provision_den",
+                False,
+                steps=steps,
+                error=_build_error(
+                    sprite_auth,
+                    "Sprite authentication check failed.",
+                    [
+                        "Run: sprite login",
+                        "Verify you can run: sprite list",
+                        "Retry provision_den after successful login",
+                    ],
+                ),
+            )
+        command_plan: list[tuple[str, list[str], Path | None, int, str | None]] = [
+            ("sprite_create", sprite_command("create", "-skip-console"), PROJECT_DIR, 180, f"{den_name}\n"),
+        ]
+    else:
+        railway_status = _run_step("railway_status", ["railway", "status", "--json"], cwd=PROJECT_DIR, timeout_s=20)
+        steps.append(railway_status)
+        if not railway_status["ok"]:
+            return _result(
+                "provision_den",
+                False,
+                steps=steps,
+                error=_build_error(
+                    railway_status,
+                    "Railway authentication or project check failed.",
+                    [
+                        "Run: railway login",
+                        "Link the project directory with Railway if needed.",
+                        "Retry provision_den after railway status succeeds.",
+                    ],
+                ),
+            )
+        command_plan = []
 
     for step_name, command, cwd, timeout_s, input_text in command_plan:
         step = _run_step(step_name, command, cwd=cwd, timeout_s=timeout_s, input_text=input_text)
@@ -299,65 +521,134 @@ def provision_den(
             )
 
     if custom_domain:
-        public_step = _run_step(
-            "sprite_url_public",
-            sprite_command("url", "update", "--auth", "public", sprite_name=den_name),
-            cwd=PROJECT_DIR,
-            timeout_s=30,
-        )
-        steps.append(public_step)
-        if not public_step["ok"]:
-            return _result(
-                "provision_den",
-                False,
-                steps=steps,
-                error=_build_error(
-                    public_step,
-                    "Provision succeeded but making the Sprite URL public failed.",
-                    [
-                        "Run sprite url update --auth public manually.",
-                        "Retry the domain operation after the URL is public.",
-                    ],
-                ),
-            )
+        if runtime_provider is RuntimeProvider.sprite:
+            url_step = _run_step("sprite_url", sprite_command("url", sprite_name=den_name), cwd=PROJECT_DIR, timeout_s=20)
+            steps.append(url_step)
+            target_url = parse_sprite_url(url_step["stdout"]) if url_step["ok"] else None
+            if not url_step["ok"] or not target_url:
+                return _result(
+                    "provision_den",
+                    False,
+                    steps=steps,
+                    error=_build_error(
+                        url_step,
+                        "Provision succeeded but reading the Sprite URL failed.",
+                        [
+                            "Run sprite url manually for the target den.",
+                            "Retry the domain operation after confirming the URL.",
+                        ],
+                    ),
+                )
 
-        url_step = _run_step("sprite_url", sprite_command("url", sprite_name=den_name), cwd=PROJECT_DIR, timeout_s=20)
-        steps.append(url_step)
-        target_url = parse_sprite_url(url_step["stdout"]) if url_step["ok"] else None
-        if not url_step["ok"] or not target_url:
-            return _result(
-                "provision_den",
-                False,
-                steps=steps,
-                error=_build_error(
-                    url_step,
-                    "Provision succeeded but reading the Sprite URL failed.",
-                    [
-                        "Run sprite url manually for the target den.",
-                        "Retry the domain operation after confirming the URL.",
-                    ],
-                ),
+        mode = DomainMode(domain_mode)
+        if mode is DomainMode.dns:
+            provider_domains = _configured_domain_zones()
+            match = resolve_custom_domain(custom_domain, provider_domains)
+            if match.provider is DomainProvider.cloudflare:
+                dns_step = (
+                    _cloudflare_dns_attach_step(den_name, custom_domain, match.zone, proxied=proxied)
+                    if runtime_provider is RuntimeProvider.sprite
+                    else _cloudflare_dns_attach_step_for_railway(den_name, custom_domain, match.zone, proxied=proxied, port=port)
+                )
+                failure_message = "Provision succeeded but Cloudflare DNS attachment failed."
+                remediation = [
+                    "Verify Cloudflare API token access and Fly certificate attach state.",
+                    "Retry the domain operation after fixing DNS or certificate requirements.",
+                ]
+            elif match.provider is DomainProvider.sesame and runtime_provider is RuntimeProvider.railway:
+                dns_step = _sesame_dns_attach_step_for_railway(den_name, custom_domain, match.zone, port=port)
+                failure_message = "Provision succeeded but Porkbun DNS attachment via sesame failed."
+                remediation = [
+                    "Verify sesame credentials and owned domain resolution.",
+                    "Retry the domain operation after fixing Porkbun DNS access.",
+                ]
+            else:
+                return _result(
+                    "provision_den",
+                    False,
+                    steps=steps,
+                    error={
+                        "kind": "unsupported_action",
+                        "message": f"DNS mode is not implemented yet for {match.provider.value}-held zones",
+                        "failing_step": "domain_provider_dispatch",
+                        "command": [],
+                        "exit_code": None,
+                        "timed_out": False,
+                        "stdout": "",
+                        "stderr": f"{custom_domain} is held by {match.provider.value}",
+                        "remediation": [
+                            "Use runtime='railway' to manage sesame/Porkbun DNS in dns mode.",
+                            "Or move the zone to Cloudflare for managed DNS attachment.",
+                        ],
+                    },
+                )
+            steps.append(dns_step)
+            failed_step = dns_step
+        else:
+            if runtime_provider is not RuntimeProvider.sprite:
+                return _result(
+                    "provision_den",
+                    False,
+                    steps=steps,
+                    error={
+                        "kind": "unsupported_action",
+                        "message": "Forward mode is currently implemented for Sprite-backed runtimes only",
+                        "failing_step": "runtime_provider_dispatch",
+                        "command": [],
+                        "exit_code": None,
+                        "timed_out": False,
+                        "stdout": "",
+                        "stderr": f"runtime={runtime_provider.value}",
+                        "remediation": [
+                            "Use runtime='sprite' for forward mode.",
+                            "Use domain_mode='dns' with Cloudflare-managed zones for Railway.",
+                        ],
+                    },
+                )
+            public_step = _run_step(
+                "sprite_url_public",
+                sprite_command("url", "update", "--auth", "public", sprite_name=den_name),
+                cwd=PROJECT_DIR,
+                timeout_s=30,
             )
+            steps.append(public_step)
+            if not public_step["ok"]:
+                return _result(
+                    "provision_den",
+                    False,
+                    steps=steps,
+                    error=_build_error(
+                        public_step,
+                        "Provision succeeded but making the Sprite URL public failed.",
+                        [
+                            "Run sprite url update --auth public manually.",
+                            "Retry the domain operation after the URL is public.",
+                        ],
+                    ),
+                )
 
-        sesame_step = _run_step(
-            "sesame_add_url_forward",
-            _sesame_url_forward_command(custom_domain, target_url),
-            cwd=None,
-            timeout_s=60,
-        )
-        steps.append(sesame_step)
-        if not sesame_step["ok"]:
+            sesame_step = _run_step(
+                "sesame_add_url_forward",
+                _sesame_url_forward_command(custom_domain, target_url or ""),
+                cwd=None,
+                timeout_s=60,
+            )
+            steps.append(sesame_step)
+            failed_step = sesame_step
+            failure_message = "Provision succeeded but adding the Porkbun URL forward failed."
+            remediation = [
+                "Verify sesame credentials and owned domain resolution.",
+                "Retry operate_den(action='domain', ...).",
+            ]
+        if not failed_step["ok"]:
             return _result(
                 "provision_den",
                 False,
                 steps=steps,
                 error=_build_error(
-                    sesame_step,
-                    "Provision succeeded but adding the Porkbun URL forward failed.",
-                    [
-                        "Verify sesame credentials and owned domain resolution.",
-                        "Retry operate_den(action='domain', ...).",
-                    ],
+                    failed_step,
+                    failure_message,
+                    remediation,
                 ),
                 data={"den_name": den_name, "backend": backend, "partial_success": True},
             )
@@ -379,15 +670,42 @@ def operate_den(
     action: Literal["list", "redeploy", "destroy", "domain", "logs", "status"],
     name: str | None = None,
     custom_domain: str | None = None,
+    service: str | None = None,
     confirm_destroy: bool = False,
     log_timeout_s: int = 20,
+    domain_mode: Literal["dns", "forward"] = "dns",
+    proxied: bool = False,
+    runtime: Literal["sprite", "railway"] = "sprite",
+    port: int | None = None,
 ) -> dict[str, Any]:
     """Operations workflow: Sprite lifecycle actions plus sesame-backed domains."""
     del log_timeout_s
     steps: list[StepResult] = []
+    runtime_provider = RuntimeProvider(runtime)
 
     if action == "list":
-        list_step = _run_step("sprite_list_dens", sprite_command("list", "-prefix", "den-"), cwd=PROJECT_DIR, timeout_s=20)
+        if runtime_provider is RuntimeProvider.sprite:
+            list_step = _run_step("sprite_list_dens", sprite_command("list", "-prefix", "den-"), cwd=PROJECT_DIR, timeout_s=20)
+            steps.append(list_step)
+            if not list_step["ok"]:
+                return _result(
+                    "operate_den",
+                    False,
+                    steps=steps,
+                    error=_build_error(
+                        list_step,
+                        "Failed to list dens from Sprite.",
+                        [
+                            "Ensure sprite is installed and authenticated.",
+                            "Run sprite list manually.",
+                            "Retry operate_den(action='list').",
+                        ],
+                    ),
+                )
+            dens = [line.strip() for line in list_step["stdout"].splitlines() if line.strip().startswith("den-")]
+            return _result("operate_den", True, steps=steps, data={"runtime": runtime_provider.value, "dens": dens, "count": len(dens)})
+
+        list_step = _railway_list_step()
         steps.append(list_step)
         if not list_step["ok"]:
             return _result(
@@ -396,37 +714,41 @@ def operate_den(
                 steps=steps,
                 error=_build_error(
                     list_step,
-                    "Failed to list dens from Sprite.",
+                    "Failed to list Railway projects.",
                     [
-                        "Ensure sprite is installed and authenticated.",
-                        "Run sprite list manually.",
-                        "Retry operate_den(action='list').",
+                        "Ensure railway is installed and authenticated.",
+                        "Run railway list --json manually.",
+                        "Retry operate_den(action='list', runtime='railway').",
                     ],
                 ),
             )
-        dens = [line.strip() for line in list_step["stdout"].splitlines() if line.strip().startswith("den-")]
-        return _result("operate_den", True, steps=steps, data={"dens": dens, "count": len(dens)})
+        try:
+            payload = json.loads(list_step["stdout"])
+            projects = parse_railway_projects(payload)
+        except (json.JSONDecodeError, ValueError) as exc:
+            return _result(
+                "operate_den",
+                False,
+                steps=steps,
+                error={
+                    "kind": "command_failure",
+                    "message": "Railway project list returned malformed JSON.",
+                    "failing_step": list_step["step"],
+                    "command": list_step["command"],
+                    "exit_code": list_step["exit_code"],
+                    "timed_out": list_step["timed_out"],
+                    "stdout": list_step["stdout"],
+                    "stderr": str(exc),
+                    "remediation": [
+                        "Run railway list --json manually to inspect the payload.",
+                        "Retry operate_den(action='list', runtime='railway') after fixing Railway auth or CLI state.",
+                    ],
+                },
+            )
+        dens = [project.name for project in projects if project.name.startswith("den-")]
+        return _result("operate_den", True, steps=steps, data={"runtime": runtime_provider.value, "dens": dens, "count": len(dens)})
 
-    if action in {"redeploy", "logs"}:
-        return _result(
-            "operate_den",
-            False,
-            steps=steps,
-            error={
-                "kind": "unsupported_action",
-                "message": f"Sprite backend does not implement action={action}",
-                "failing_step": "provider_capability_check",
-                "command": [],
-                "exit_code": None,
-                "timed_out": False,
-                "stdout": "",
-                "stderr": f"{action} is not exposed by the current Sprite CLI integration",
-                "remediation": [
-                    "Use Sprite checkpoints or recreate the sprite.",
-                    "Connect to the sprite for in-environment inspection.",
-                ],
-            },
-        )
+    # Note: redeploy is handled in the main action match below (line ~856)
 
     if not name:
         return _result(
@@ -471,10 +793,91 @@ def operate_den(
                     ],
                 },
             )
-        step = _run_step("sprite_destroy", sprite_command("destroy", "-force", sprite_name=den_name), cwd=PROJECT_DIR, timeout_s=60)
+        if runtime_provider is RuntimeProvider.sprite:
+            step = _run_step("sprite_destroy", sprite_command("destroy", "-force", sprite_name=den_name), cwd=PROJECT_DIR, timeout_s=60)
+        else:
+            status_step = _railway_status_step()
+            steps.append(status_step)
+            if not status_step["ok"]:
+                return _result(
+                    "operate_den",
+                    False,
+                    steps=steps,
+                    error=_build_error(
+                        status_step,
+                        "Railway destroy requires a linked project, but Railway status failed.",
+                        [
+                            "Run railway login and railway link in the den project directory.",
+                            "Retry operate_den(action='destroy', runtime='railway', confirm_destroy=True).",
+                        ],
+                    ),
+                )
+            try:
+                linked_payload = json.loads(status_step["stdout"])
+            except json.JSONDecodeError:
+                linked_payload = None
+            linked_project = extract_railway_linked_project_name(linked_payload)
+            if linked_project != den_name:
+                return _result(
+                    "operate_den",
+                    False,
+                    steps=steps,
+                    error={
+                        "kind": "safety_check",
+                        "message": "Refusing Railway project deletion because the linked project does not match the requested den name.",
+                        "failing_step": status_step["step"],
+                        "command": status_step["command"],
+                        "exit_code": status_step["exit_code"],
+                        "timed_out": status_step["timed_out"],
+                        "stdout": status_step["stdout"],
+                        "stderr": status_step["stderr"] or f"linked_project={linked_project or 'unknown'} requested={den_name}",
+                        "remediation": [
+                            f"Link {PROJECT_DIR} to the intended Railway project ({den_name}) before retrying.",
+                            "Or delete the Railway project manually if you intend to target a different linked project.",
+                        ],
+                    },
+                )
+            step = _run_step("railway_delete_project", railway_delete_command(den_name), cwd=PROJECT_DIR, timeout_s=60)
         steps.append(step)
+    elif action == "redeploy":
+        if runtime_provider is RuntimeProvider.sprite:
+            comment = make_sprite_redeploy_comment(den_name, str(time.time_ns()))
+            cp_step = _run_step("sprite_checkpoint_create", sprite_checkpoint_create_command(den_name, comment), cwd=PROJECT_DIR, timeout_s=60)
+            steps.append(cp_step)
+            if not cp_step["ok"]:
+                return _result("operate_den", False, steps=steps, error=_build_error(cp_step, f"Checkpoint creation failed for {den_name}", ["Run sprite checkpoint list manually to verify.", "Ensure sprite CLI is authenticated."]))
+
+            # Try API first, fall back to CLI list
+            api_step = _run_step("sprite_api_list_checkpoints", sprite_command("api", "/checkpoints", sprite_name=den_name), cwd=PROJECT_DIR, timeout_s=30)
+            steps.append(api_step)
+
+            if api_step["ok"] and api_step["stdout"].strip():
+                checkpoint_id = find_checkpoint_version_in_api_output(api_step["stdout"], comment)
+            else:
+                list_step = _run_step("sprite_checkpoint_list", sprite_command("checkpoint", "list", sprite_name=den_name), cwd=PROJECT_DIR, timeout_s=30)
+                steps.append(list_step)
+                checkpoint_id = find_checkpoint_version_in_list_output(list_step["stdout"], comment) if list_step["ok"] and list_step["stdout"].strip() else None
+
+            if not checkpoint_id:
+                return _result("operate_den", False, steps=steps, error={"kind": "checkpoint_not_found", "message": f"Checkpoint created for {den_name} but ID could not be determined. Run 'sprite checkpoint list' and 'sprite restore <id>' manually.", "failing_step": "checkpoint_lookup", "command": [], "exit_code": None, "timed_out": False, "stdout": "", "stderr": "", "remediation": ["Run sprite checkpoint list -s den_name manually.", "Then sprite restore <checkpoint_id> to complete redeploy."]})
+
+            restore_step = _run_step("sprite_restore", sprite_restore_command(den_name, checkpoint_id), cwd=PROJECT_DIR, timeout_s=60)
+            steps.append(restore_step)
+            if not restore_step["ok"]:
+                return _result("operate_den", False, steps=steps, error=_build_error(restore_step, f"Restore failed for {den_name}", ["Checkpoint was created. Run 'sprite restore <checkpoint_id>' manually."]))
+
+            return _result("operate_den", True, steps=steps, data={"action": "redeploy", "den_name": den_name, "checkpoint_id": checkpoint_id})
+        else:
+            step = _run_step("railway_redeploy", ["railway", "redeploy", "-y", "--json"], cwd=PROJECT_DIR, timeout_s=60)
+            steps.append(step)
+            if not step["ok"]:
+                return _result("operate_den", False, steps=steps, error=_build_error(step, "Railway redeploy failed", ["Ensure railway CLI is authenticated and linked to a project.", "Use railway login and railway link first."]))
+            return _result("operate_den", True, steps=steps, data={"action": "redeploy", "den_name": den_name})
     elif action == "status":
-        step = _run_step("sprite_status", sprite_command("url", sprite_name=den_name), cwd=PROJECT_DIR, timeout_s=30)
+        if runtime_provider is RuntimeProvider.sprite:
+            step = _run_step("sprite_status", sprite_command("url", sprite_name=den_name), cwd=PROJECT_DIR, timeout_s=30)
+        else:
+            step = _railway_status_step()
         steps.append(step)
     else:
         if not custom_domain:
@@ -495,60 +898,137 @@ def operate_den(
                 },
             )
 
-        public_step = _run_step(
-            "sprite_url_public",
-            sprite_command("url", "update", "--auth", "public", sprite_name=den_name),
-            cwd=PROJECT_DIR,
-            timeout_s=30,
-        )
-        steps.append(public_step)
-        if not public_step["ok"]:
-            return _result(
-                "operate_den",
-                False,
-                steps=steps,
-                error=_build_error(
-                    public_step,
-                    f"Action {action} failed for {den_name}",
-                    [
-                        "Use command, stdout, and stderr in this payload to debug.",
-                        "Fix auth/state issues, then retry the same action.",
-                    ],
-                ),
-            )
+        target_url: str | None = None
+        if runtime_provider is RuntimeProvider.sprite:
+            url_step = _run_step("sprite_url", sprite_command("url", sprite_name=den_name), cwd=PROJECT_DIR, timeout_s=20)
+            steps.append(url_step)
+            target_url = parse_sprite_url(url_step["stdout"]) if url_step["ok"] else None
+            if not url_step["ok"] or not target_url:
+                return _result(
+                    "operate_den",
+                    False,
+                    steps=steps,
+                    error=_build_error(
+                        url_step,
+                        f"Action {action} failed for {den_name}",
+                        [
+                            "Use command, stdout, and stderr in this payload to debug.",
+                            "Fix auth/state issues, then retry the same action.",
+                        ],
+                    ),
+                )
 
-        url_step = _run_step("sprite_url", sprite_command("url", sprite_name=den_name), cwd=PROJECT_DIR, timeout_s=20)
-        steps.append(url_step)
-        target_url = parse_sprite_url(url_step["stdout"]) if url_step["ok"] else None
-        if not url_step["ok"] or not target_url:
-            return _result(
-                "operate_den",
-                False,
-                steps=steps,
-                error=_build_error(
-                    url_step,
-                    f"Action {action} failed for {den_name}",
-                    [
-                        "Use command, stdout, and stderr in this payload to debug.",
-                        "Fix auth/state issues, then retry the same action.",
-                    ],
-                ),
+        mode = DomainMode(domain_mode)
+        if mode is DomainMode.dns:
+            provider_domains = _configured_domain_zones()
+            match = resolve_custom_domain(custom_domain, provider_domains)
+            if match.provider is DomainProvider.cloudflare:
+                domain_step = (
+                    _cloudflare_dns_attach_step(den_name, custom_domain, match.zone, proxied=proxied)
+                    if runtime_provider is RuntimeProvider.sprite
+                    else _cloudflare_dns_attach_step_for_railway(den_name, custom_domain, match.zone, proxied=proxied, port=port)
+                )
+            elif match.provider is DomainProvider.sesame and runtime_provider is RuntimeProvider.sprite and target_url:
+                from .core import porkbun_upsert_dns_records
+                records = [DnsRecord(
+                    name=match.subdomain or "",
+                    type="ALIAS",
+                    content=target_url,
+                    proxied=False,
+                )]
+                applied = porkbun_upsert_dns_records(
+                    zone=match.zone,
+                    records=records,
+                )
+                domain_step = {
+                    "step": "porkbun_dns_upsert",
+                    "command": ["porkbun-api", "dns-records", match.zone],
+                    "cwd": str(Path.home()),
+                    "ok": True,
+                    "exit_code": 0,
+                    "timed_out": False,
+                    "duration_ms": 0,
+                    "stdout": json.dumps(applied),
+                    "stderr": "",
+                }
+            elif match.provider is DomainProvider.sesame and runtime_provider is RuntimeProvider.railway:
+                domain_step = _sesame_dns_attach_step_for_railway(den_name, custom_domain, match.zone, port=port)
+            else:
+                return _result(
+                    "operate_den",
+                    False,
+                    steps=steps,
+                    error={
+                        "kind": "unsupported_action",
+                        "message": f"DNS mode is not implemented yet for {match.provider.value}-held zones",
+                        "failing_step": "domain_provider_dispatch",
+                        "command": [],
+                        "exit_code": None,
+                        "timed_out": False,
+                        "stdout": "",
+                        "stderr": f"{custom_domain} is held by {match.provider.value}",
+                        "remediation": [
+                            "Use runtime='railway' to manage sesame/Porkbun DNS in dns mode.",
+                            "Or move the zone to Cloudflare for managed DNS attachment.",
+                        ],
+                    },
+                )
+        else:
+            if runtime_provider is not RuntimeProvider.sprite:
+                return _result(
+                    "operate_den",
+                    False,
+                    steps=steps,
+                    error={
+                        "kind": "unsupported_action",
+                        "message": "Forward mode is currently implemented for Sprite-backed runtimes only",
+                        "failing_step": "runtime_provider_dispatch",
+                        "command": [],
+                        "exit_code": None,
+                        "timed_out": False,
+                        "stdout": "",
+                        "stderr": f"runtime={runtime_provider.value}",
+                        "remediation": [
+                            "Use runtime='sprite' for forward mode.",
+                            "Use domain_mode='dns' with Cloudflare-managed zones for Railway.",
+                        ],
+                    },
+                )
+            public_step = _run_step(
+                "sprite_url_public",
+                sprite_command("url", "update", "--auth", "public", sprite_name=den_name),
+                cwd=PROJECT_DIR,
+                timeout_s=30,
             )
-
-        sesame_step = _run_step(
-            "sesame_add_url_forward",
-            _sesame_url_forward_command(custom_domain, target_url),
-            cwd=None,
-            timeout_s=60,
-        )
-        steps.append(sesame_step)
-        if not sesame_step["ok"]:
+            steps.append(public_step)
+            if not public_step["ok"]:
+                return _result(
+                    "operate_den",
+                    False,
+                    steps=steps,
+                    error=_build_error(
+                        public_step,
+                        f"Action {action} failed for {den_name}",
+                        [
+                            "Use command, stdout, and stderr in this payload to debug.",
+                            "Fix auth/state issues, then retry the same action.",
+                        ],
+                    ),
+                )
+            domain_step = _run_step(
+                "sesame_add_url_forward",
+                _sesame_url_forward_command(custom_domain, target_url or ""),
+                cwd=None,
+                timeout_s=60,
+            )
+        steps.append(domain_step)
+        if not domain_step["ok"]:
             return _result(
                 "operate_den",
                 False,
                 steps=steps,
                 error=_build_error(
-                    sesame_step,
+                    domain_step,
                     f"Action {action} failed for {den_name}",
                     [
                         "Use command, stdout, and stderr in this payload to debug.",
@@ -580,7 +1060,58 @@ def operate_den(
 
     data: dict[str, Any] = {"action": action, "den_name": den_name, "custom_domain": custom_domain}
     if action == "status":
-        data["url"] = parse_sprite_url(step["stdout"])
+        if runtime_provider is RuntimeProvider.sprite:
+            data["url"] = parse_sprite_url(step["stdout"])
+        else:
+            data["runtime"] = runtime_provider.value
+            try:
+                payload = json.loads(step["stdout"])
+            except json.JSONDecodeError:
+                payload = None
+            data["linked_project"] = extract_railway_linked_project_name(payload)
+            services = parse_railway_service_statuses(payload)
+            data["services"] = [
+                {
+                    "name": entry.name,
+                    "service_id": entry.service_id,
+                    "instance_id": entry.instance_id,
+                    "latest_deployment_id": entry.latest_deployment_id,
+                    "latest_deployment_status": entry.latest_deployment_status,
+                    "deployment_stopped": entry.deployment_stopped,
+                }
+                for entry in services
+            ]
+            if service is not None:
+                matched = next((entry for entry in services if entry.name == service), None)
+                if matched is None:
+                    return _result(
+                        "operate_den",
+                        False,
+                        steps=steps,
+                        error={
+                            "kind": "invalid_input",
+                            "message": f"Railway service not found: {service}",
+                            "failing_step": step["step"],
+                            "command": step["command"],
+                            "exit_code": step["exit_code"],
+                            "timed_out": step["timed_out"],
+                            "stdout": step["stdout"],
+                            "stderr": step["stderr"] or "Requested service is not present in linked project status.",
+                            "remediation": [
+                                "Call operate_den(action='status', runtime='railway') without service to inspect available services.",
+                                "Retry with a service name from the returned services list.",
+                            ],
+                        },
+                    )
+                data["service"] = {
+                    "name": matched.name,
+                    "service_id": matched.service_id,
+                    "instance_id": matched.instance_id,
+                    "latest_deployment_id": matched.latest_deployment_id,
+                    "latest_deployment_status": matched.latest_deployment_status,
+                    "deployment_stopped": matched.deployment_stopped,
+                }
+            data["status"] = payload if payload is not None else step["stdout"]
     return _result("operate_den", True, steps=steps, data=data)
 
 

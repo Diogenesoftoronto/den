@@ -12,7 +12,7 @@ What this verifies:
 - repository signals are detected and summarized
 - `den.dhall` is inferred and written
 - reproducible artifacts are generated from Dhall
-- Sprite and sesame are checked when available, but repo inference does not depend on them
+- runtime/domain providers are only consulted when the workflow needs them
 
 Print the inferred config without writing files:
 
@@ -24,6 +24,12 @@ den setup --print
 
 ```bash
 den spawn myproject
+```
+
+To use Railway instead of Sprite:
+
+```bash
+den spawn --runtime railway myproject
 ```
 
 Then connect:
@@ -38,7 +44,7 @@ Run a one-off command without opening a console:
 den exec myproject -- pwd
 ```
 
-Bind the current directory to the Sprite den:
+Bind the current directory to the den:
 
 ```bash
 den sprite-use myproject
@@ -63,19 +69,31 @@ den redeploy myproject
 den spawn --guix myproject
 ```
 
-After changing package config, recreate the sprite or use Sprite checkpoints:
+After changing package config, recreate the runtime or use checkpoints where supported:
 
 ```bash
 hx guix/manifest.scm
 den redeploy myproject
 ```
 
-## 4. Deploy a repository to a sprite
+Railway-backed dens can also be spawned with the same command surface:
 
-One-shot: infer config, create/reuse a sprite, sync sources, start the dev command:
+```bash
+den spawn --runtime railway myproject
+```
+
+## 4. Deploy a repository to a runtime
+
+One-shot: infer config, create/reuse the selected runtime, sync sources, start the dev command:
 
 ```bash
 den deploy /path/to/my-app
+```
+
+To route the same workflow through Railway:
+
+```bash
+den deploy /path/to/my-app --runtime railway
 ```
 
 Prepare without starting:
@@ -106,8 +124,9 @@ den domain myproject dev.example.com
 
 Canonical custom-domain note:
 
-- `den domain` currently creates a Porkbun URL forward.
-- If you need `https://example.com` to remain in the browser URL bar, point DNS directly at the Sprite/Fly edge and provision the matching edge certificate first.
+- `den domain` now defaults to DNS attachment.
+- Domain ownership decides the provider: Cloudflare-held zones use Cloudflare, while Porkbun-held zones use sesame.
+- If you need the redirect-style fallback, use `den domain myproject dev.example.com --mode forward`.
 
 Toggle public/org-authenticated Sprite URL:
 
@@ -129,7 +148,7 @@ sprite -s den-myproject exec -- sh -lc 'tmux new-session -d -s myproject "cd /ho
 
 This keeps sync and process lifetime separate:
 
-- `den deploy --no-run` handles repository sync into the sprite.
+- `den deploy --no-run` handles repository sync into the selected runtime.
 - `sprite exec` starts the app in a detached `tmux` session so CI can exit without killing the server.
 
 ## 7. Build a Guix image locally

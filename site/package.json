@@ -1,0 +1,8 @@
+{
+  "name": "den-site",
+  "version": "1.0.0",
+  "description": "den showcase website",
+  "scripts": {
+    "start": "python3 -m http.server 8080"
+  }
+}

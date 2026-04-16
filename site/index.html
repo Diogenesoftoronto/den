@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>den — Your Personal Cloud Lab</title>
+  
+  <!-- Primary Meta Tags -->
+  <meta name="description" content="den spins up fully-configured cloud dev environments in seconds. Nix or Guix backends. Fish, Helix, Zellij. Your dotfiles. One command.">
+  <meta name="keywords" content="dev environment, cloud, nix, guix, remote development, reproducible builds">
+  <meta name="author" content="den">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://den.dio.computer">
+  <meta property="og:title" content="den — Your Personal Cloud Lab">
+  <meta property="og:description" content="Spin up fully-configured cloud dev environments in seconds. Nix or Guix. Fish, Helix, Zellij. One command.">
+  <meta property="og:image" content="https://den.dio.computer/assets/og-card.svg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:site_name" content="den">
+  
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://den.dio.computer">
+  <meta property="twitter:title" content="den — Your Personal Cloud Lab">
+  <meta property="twitter:description" content="Spin up fully-configured cloud dev environments in seconds. Nix or Guix. Fish, Helix, Zellij. One command.">
+  <meta property="twitter:image" content="https://den.dio.computer/assets/og-card.svg">
+  
+  <!-- Discord -->
+  <meta name="theme-color" content="#FF6B35">
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧪</text></svg>">
+  
+  <style>
+    /* === DEN BRAND SYSTEM === */
+    :root {
+      /* Colors - Inspired by vintage scientific equipment & space programs */
+      --bg-primary: #0D1117;
+      --bg-secondary: #161B22;
+      --bg-tertiary: #21262D;
+      
+      --accent-orange: #FF6B35;
+      --accent-amber: #F4A261;
+      --accent-teal: #2A9D8F;
+      --accent-cyan: #4CC9F0;
+      --accent-lime: #B5E48C;
+      --accent-red: #E63946;
+      
+      --text-primary: #E6EDF3;
+      --text-secondary: #7D8597;
+      --text-muted: #484F58;
+      
+      /* Typography */
+      --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      
+      /* Spacing */
+      --space-xs: 0.5rem;
+      --space-sm: 0.75rem;
+      --space-md: 1rem;
+      --space-lg: 1.5rem;
+      --space-xl: 2rem;
+      --space-2xl: 3rem;
+      --space-3xl: 4rem;
+      
+      /* Radii */
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html {
+      scroll-behavior: smooth;
+    }
+    
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    
+    /* === SCANLINE OVERLAY === */
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+      );
+      pointer-events: none;
+      z-index: 1000;
+    }
+    
+    /* === NAVIGATION === */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: var(--space-md) var(--space-xl);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 100;
+      background: rgba(13, 17, 23, 0.8);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--bg-tertiary);
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--accent-orange);
+      text-decoration: none;
+    }
+    
+    .logo-icon {
+      font-size: 1.5rem;
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: var(--space-lg);
+      list-style: none;
+    }
+    
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      transition: color 0.2s;
+    }
+    
+    .nav-links a:hover {
+      color: var(--accent-orange);
+    }
+    
+    /* === HERO === */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: var(--space-3xl) var(--space-xl);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    /* Decorative grid background */
+    .hero::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 200%;
+      height: 200%;
+      background-image: 
+        linear-gradient(var(--bg-tertiary) 1px, transparent 1px),
+        linear-gradient(90deg, var(--bg-tertiary) 1px, transparent 1px);
+      background-size: 60px 60px;
+      opacity: 0.3;
+      animation: gridMove 20s linear infinite;
+      pointer-events: none;
+    }
+    
+    @keyframes gridMove {
+      0% { transform: translate(-50%, -50%) translate(0, 0); }
+      100% { transform: translate(-50%, -50%) translate(60px, 60px); }
+    }
+    
+    .hero-content {
+      position: relative;
+      z-index: 1;
+    }
+    
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      padding: var(--space-xs) var(--space-md);
+      background: var(--bg-secondary);
+      border: 1px solid var(--bg-tertiary);
+      border-radius: var(--radius-lg);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--accent-amber);
+      margin-bottom: var(--space-lg);
+    }
+    
+    .hero-badge .dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent-lime);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    h1 {
+      font-size: clamp(3rem, 8vw, 6rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin-bottom: var(--space-md);
+      background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-orange) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .hero-tagline {
+      font-size: clamp(1.125rem, 2.5vw, 1.5rem);
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin-bottom: var(--space-2xl);
+    }
+    
+    .hero-actions {
+      display: flex;
+      gap: var(--space-md);
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    
+    /* === BUTTONS === */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-md) var(--space-xl);
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 500;
+      text-decoration: none;
+      border-radius: var(--radius-md);
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+    }
+    
+    .btn-primary {
+      background: var(--accent-orange);
+      color: var(--bg-primary);
+    }
+    
+    .btn-primary:hover {
+      background: var(--accent-amber);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(255, 107, 53, 0.3);
+    }
+    
+    .btn-secondary {
+      background: transparent;
+      color: var(--text-primary);
+      border: 1px solid var(--bg-tertiary);
+    }
+    
+    .btn-secondary:hover {
+      border-color: var(--accent-orange);
+      color: var(--accent-orange);
+    }
+    
+    /* === TERMINAL === */
+    .terminal {
+      max-width: 800px;
+      width: 100%;
+      margin: var(--space-3xl) auto 0;
+      background: var(--bg-secondary);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--bg-tertiary);
+      overflow: hidden;
+      position: relative;
+      z-index: 1;
+    }
+    
+    .terminal-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      background: var(--bg-tertiary);
+      border-bottom: 1px solid var(--bg-tertiary);
+    }
+    
+    .terminal-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    
+    .terminal-dot.red { background: var(--accent-red); }
+    .terminal-dot.yellow { background: var(--accent-amber); }
+    .terminal-dot.green { background: var(--accent-lime); }
+    
+    .terminal-title {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    
+    .terminal-body {
+      padding: var(--space-lg);
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      line-height: 1.8;
+      overflow-x: auto;
+    }
+    
+    .terminal-line {
+      display: flex;
+      gap: var(--space-sm);
+    }
+    
+    .terminal-prompt {
+      color: var(--accent-orange);
+    }
+    
+    .terminal-command {
+      color: var(--text-primary);
+    }
+    
+    .terminal-output {
+      color: var(--text-secondary);
+      margin-top: var(--space-xs);
+      margin-bottom: var(--space-md);
+    }
+    
+    .terminal-output.success {
+      color: var(--accent-lime);
+    }
+    
+    .terminal-cursor {
+      display: inline-block;
+      width: 8px;
+      height: 1.2em;
+      background: var(--accent-orange);
+      animation: blink 1s step-end infinite;
+      vertical-align: middle;
+    }
+    
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+    
+    /* === SECTIONS === */
+    section {
+      padding: var(--space-3xl) var(--space-xl);
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .section-header {
+      text-align: center;
+      margin-bottom: var(--space-3xl);
+    }
+    
+    .section-label {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--accent-orange);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: var(--space-sm);
+    }
+    
+    h2 {
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+    }
+    
+    .section-desc {
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    
+    /* === FEATURES === */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: var(--space-lg);
+    }
+    
+    .feature {
+      background: var(--bg-secondary);
+      border: 1px solid var(--bg-tertiary);
+      border-radius: var(--radius-lg);
+      padding: var(--space-xl);
+      transition: all 0.2s;
+      position: relative;
+    }
+    
+    .feature:hover {
+      border-color: var(--accent-orange);
+      transform: translateY(-4px);
+    }
+    
+    .feature::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent-orange), var(--accent-amber));
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    
+    .feature:hover::before {
+      opacity: 1;
+    }
+    
+    .feature-icon {
+      font-size: 2rem;
+      margin-bottom: var(--space-md);
+    }
+    
+    .feature h3 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin-bottom: var(--space-sm);
+      color: var(--text-primary);
+    }
+    
+    .feature p {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      line-height: 1.7;
+    }
+    
+    .feature-meta {
+      display: flex;
+      gap: var(--space-sm);
+      margin-top: var(--space-md);
+      flex-wrap: wrap;
+    }
+    
+    .feature-tag {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      background: var(--bg-tertiary);
+      color: var(--accent-cyan);
+      border-radius: var(--radius-sm);
+    }
+    
+    /* === INSTALL === */
+    .install-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-2xl);
+      align-items: start;
+    }
+    
+    @media (max-width: 768px) {
+      .install-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .install-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--bg-tertiary);
+      border-radius: var(--radius-lg);
+      padding: var(--space-xl);
+    }
+    
+    .install-card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: var(--space-lg);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    
+    .install-card h3 span {
+      font-size: 1.5rem;
+    }
+    
+    .code-block {
+      background: var(--bg-primary);
+      border: 1px solid var(--bg-tertiary);
+      border-radius: var(--radius-md);
+      padding: var(--space-md);
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      overflow-x: auto;
+      margin-bottom: var(--space-md);
+    }
+    
+    .code-block code {
+      color: var(--accent-lime);
+    }
+    
+    .code-block .comment {
+      color: var(--text-muted);
+    }
+    
+    .code-block .prompt {
+      color: var(--accent-orange);
+    }
+    
+    .prereq-list {
+      list-style: none;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+    
+    .prereq-list li {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-sm);
+    }
+    
+    .prereq-list li::before {
+      content: "✓";
+      color: var(--accent-lime);
+      font-weight: bold;
+    }
+    
+    /* === USE CASES === */
+    .use-cases {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+    
+    .use-case {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: var(--space-xl);
+      padding: var(--space-xl);
+      background: var(--bg-secondary);
+      border: 1px solid var(--bg-tertiary);
+      border-radius: var(--radius-lg);
+      align-items: start;
+    }
+    
+    @media (max-width: 600px) {
+      .use-case {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .use-case-number {
+      font-family: var(--font-mono);
+      font-size: 3rem;
+      font-weight: 800;
+      color: var(--bg-tertiary);
+      line-height: 1;
+    }
+    
+    .use-case h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: var(--space-sm);
+    }
+    
+    .use-case p {
+      color: var(--text-secondary);
+      margin-bottom: var(--space-md);
+    }
+    
+    .use-case-example {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      padding: var(--space-md);
+      background: var(--bg-primary);
+      border-radius: var(--radius-md);
+      color: var(--accent-cyan);
+    }
+    
+    /* === SOURCE CODE === */
+    .source-section {
+      text-align: center;
+      background: var(--bg-secondary);
+      border: 1px solid var(--bg-tertiary);
+      border-radius: var(--radius-lg);
+      padding: var(--space-3xl) var(--space-xl);
+    }
+    
+    .source-section h2 {
+      margin-bottom: var(--space-lg);
+    }
+    
+    .source-section p {
+      color: var(--text-secondary);
+      margin-bottom: var(--space-xl);
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    
+    .source-stats {
+      display: flex;
+      justify-content: center;
+      gap: var(--space-3xl);
+      margin-top: var(--space-xl);
+      flex-wrap: wrap;
+    }
+    
+    .stat {
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent-orange);
+    }
+    
+    .stat-label {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+    
+    /* === FOOTER === */
+    footer {
+      border-top: 1px solid var(--bg-tertiary);
+      padding: var(--space-2xl) var(--space-xl);
+      text-align: center;
+    }
+    
+    .footer-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-lg);
+    }
+    
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: var(--space-xl);
+      flex-wrap: wrap;
+    }
+    
+    .footer-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      transition: color 0.2s;
+    }
+    
+    .footer-links a:hover {
+      color: var(--accent-orange);
+    }
+    
+    .footer-copy {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+    
+    /* === SCROLLBAR === */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: var(--bg-primary);
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="#" class="logo">
+      <span class="logo-icon">🧪</span>
+      <span>den</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#install">Install</a></li>
+      <li><a href="#use-cases">Use Cases</a></li>
+      <li><a href="#source">Source</a></li>
+    </ul>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="dot"></span>
+        <span>SYSTEM ONLINE // v0.1.0</span>
+      </div>
+      <h1>den</h1>
+      <p class="hero-tagline">Provision reproducible cloud dev environments and deployable workloads from one Rust CLI. Nix or Guix backends. Your tools, your dotfiles, your runtime choice.</p>
+      <div class="hero-actions">
+        <a href="#install" class="btn btn-primary">
+          <span>⚡</span>
+          Initialize Lab
+        </a>
+        <a href="https://github.com/diogenesoftoronto/den" class="btn btn-secondary" target="_blank" rel="noopener">
+          <span>📡</span>
+          View Source
+        </a>
+      </div>
+    </div>
+    
+    <div class="terminal">
+      <div class="terminal-header">
+        <span class="terminal-dot red"></span>
+        <span class="terminal-dot yellow"></span>
+        <span class="terminal-dot green"></span>
+        <span class="terminal-title">den@cloud ~ fish</span>
+      </div>
+      <div class="terminal-body">
+        <div class="terminal-line">
+          <span class="terminal-prompt">❯</span>
+          <span class="terminal-command">den spawn quantum-project</span>
+        </div>
+        <div class="terminal-output">
+          → Creating runtime on Sprite...<br>
+          → Provisioning container (Fedora 42 + Nix)...<br>
+          → Installing fish, helix, zellij...<br>
+          → Syncing dotfiles...<br>
+          → Attaching custom domain...<br>
+          <span class="success">✓ Environment ready at quantum-project.dio.computer</span>
+        </div>
+        <div class="terminal-line">
+          <span class="terminal-prompt">❯</span>
+          <span class="terminal-command">den doctor --verify-auth</span>
+        </div>
+        <div class="terminal-output">
+          → Checking executable, PATH, assets, and provider auth...<br>
+          <span class="success">✓ Install looks healthy. Runtime checks passed.</span>
+        </div>
+        <div class="terminal-line">
+          <span class="terminal-prompt">❯</span>
+          <span class="terminal-cursor"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="section-header">
+      <span class="section-label">Capabilities</span>
+      <h2>The Spec Sheet</h2>
+      <p class="section-desc">Everything you need for reproducible, portable development environments.</p>
+    </div>
+    
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">⚡</div>
+        <h3>One-Command Spawn</h3>
+        <p>Spin up a complete dev environment with a single command. Fish shell, Helix editor, Zellij multiplexer, and your dotfiles ready to go.</p>
+        <div class="feature-meta">
+          <span class="feature-tag">den spawn</span>
+        </div>
+      </div>
+      
+      <div class="feature">
+        <div class="feature-icon">🧬</div>
+        <h3>Reproducible Backends</h3>
+        <p>Choose your philosophy. Nix for the flakes ecosystem, Guix for fully declarative Scheme configurations. Both reproducible. Both beautiful.</p>
+        <div class="feature-meta">
+          <span class="feature-tag">--guix</span>
+          <span class="feature-tag">--nix</span>
+        </div>
+      </div>
+      
+      <div class="feature">
+        <div class="feature-icon">🌐</div>
+        <h3>Custom Domains</h3>
+        <p>Attach your own domain to any environment. Automatic DNS via Cloudflare or sesame/Porkbun. Native attachment or forwarding fallback.</p>
+        <div class="feature-meta">
+          <span class="feature-tag">den domain</span>
+        </div>
+      </div>
+      
+      <div class="feature">
+        <div class="feature-icon">🔄</div>
+        <h3>Runtime Flexibility</h3>
+        <p>Run on Sprite/Fly or Railway today through one canonical Rust CLI, with a self-hosted runtime path defined so the workflow does not have to stay vendor-bound.</p>
+        <div class="feature-meta">
+          <span class="feature-tag">--runtime railway</span>
+        </div>
+      </div>
+      
+      <div class="feature">
+        <div class="feature-icon">📦</div>
+        <h3>Smart Project Detection</h3>
+        <p>den setup analyzes your repo and generates the perfect configuration. Detects package.json, pyproject.toml, Cargo.toml, and more.</p>
+        <div class="feature-meta">
+          <span class="feature-tag">den setup</span>
+        </div>
+      </div>
+      
+      <div class="feature">
+        <div class="feature-icon">🔒</div>
+        <h3>Secure by Default</h3>
+        <p>Tailscale SSH for zero-config secure access. No exposed ports. No VPN configuration. Just cryptographically authenticated connections.</p>
+        <div class="feature-meta">
+          <span class="feature-tag">tailscale</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="section-header">
+      <span class="section-label">Initialization</span>
+      <h2>Get Your Lab</h2>
+      <p class="section-desc">Install den and connect your cloud accounts.</p>
+    </div>
+    
+    <div class="install-grid">
+      <div class="install-card">
+        <h3><span>📥</span> Installation</h3>
+        <div class="code-block">
+          <code><span class="comment"># Install the canonical Rust CLI</span><br>
+          <span class="prompt">❯</span> git clone https://github.com/diogenesoftoronto/den<br>
+          <span class="prompt">❯</span> cd den<br>
+          <span class="prompt">❯</span> cargo install --path crates/den-cli</code>
+        </div>
+        <div class="code-block">
+          <code><span class="comment"># Verify install health</span><br>
+          <span class="prompt">❯</span> den doctor --verify-auth</code>
+        </div>
+      </div>
+      
+      <div class="install-card">
+        <h3><span>📋</span> Prerequisites</h3>
+        <ul class="prereq-list">
+          <li>Rust toolchain with Cargo</li>
+          <li>bash and tar available locally</li>
+          <li>Sprite CLI or Railway CLI for runtime operations</li>
+          <li>sesame CLI (for Porkbun domains)</li>
+          <li>Cloudflare API token (optional)</li>
+        </ul>
+        <div class="code-block" style="margin-top: var(--space-lg);">
+          <code><span class="comment"># Verify installation</span><br>
+          <span class="prompt">❯</span> den --version<br>
+          den 0.1.0<br><br>
+          <span class="prompt">❯</span> den doctor</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="use-cases">
+    <div class="section-header">
+      <span class="section-label">Protocols</span>
+      <h2>Mission Profiles</h2>
+      <p class="section-desc">How developers use den in the field.</p>
+    </div>
+    
+    <div class="use-cases">
+      <div class="use-case">
+        <div class="use-case-number">01</div>
+        <div>
+          <h3>The Nomad Developer</h3>
+          <p>Switch between laptops without losing your environment. Coffee shop MacBook, desktop Linux, borrowed Chromebook—all identical. Your entire dev setup lives in the cloud, ready when you are.</p>
+          <div class="use-case-example">
+            den spawn nomad-workstation && den connect nomad-workstation
+          </div>
+        </div>
+      </div>
+      
+      <div class="use-case">
+        <div class="use-case-number">02</div>
+        <div>
+          <h3>The Clean Slate</h3>
+          <p>Onboard a new teammate in minutes, not days. No "works on my machine." No dependency hell. Just a running environment that matches production exactly.</p>
+          <div class="use-case-example">
+            den deploy /path/to/repo --no-run && den connect repo-name
+          </div>
+        </div>
+      </div>
+      
+      <div class="use-case">
+        <div class="use-case-number">03</div>
+        <div>
+          <h3>The Parallel Dimension</h3>
+          <p>Run experiments without contaminating your main setup. Try that new language version. Test the beta compiler. If it breaks, destroy it and spawn anew.</p>
+          <div class="use-case-example">
+            den spawn experiment --guix && den connect experiment
+          </div>
+        </div>
+      </div>
+      
+      <div class="use-case">
+        <div class="use-case-number">04</div>
+        <div>
+          <h3>The Remote Beast</h3>
+          <p>Compile on a 32-core cloud VM from your 12" laptop. Train ML models while your laptop stays cool. Heavy lifting happens elsewhere; you stay mobile.</p>
+          <div class="use-case-example">
+            den exec big-project -- cargo build --release
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="source">
+    <div class="source-section">
+      <span class="section-label">Telemetry</span>
+      <h2>Open Source</h2>
+      <p>den is built in the open. Rust is the canonical CLI and MCP implementation. Dhall remains the configuration source, and Nix or Guix drive reproducible environments.</p>
+      <div class="hero-actions" style="margin-top: var(--space-xl);">
+        <a href="https://github.com/diogenesoftoronto/den" class="btn btn-primary" target="_blank" rel="noopener">
+          <span>🐙</span>
+          GitHub Repository
+        </a>
+        <a href="https://github.com/diogenesoftoronto/den/issues" class="btn btn-secondary" target="_blank" rel="noopener">
+          <span>🐛</span>
+          Report Issue
+        </a>
+      </div>
+      <div class="source-stats">
+        <div class="stat">
+          <div class="stat-value">Rust</div>
+          <div class="stat-label">Canonical CLI</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">Nix</div>
+          <div class="stat-label">Backend Option</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">Guix</div>
+          <div class="stat-label">Backend Option</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">Open</div>
+          <div class="stat-label">Self-Hosted Path</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-content">
+      <div class="footer-links">
+        <a href="#features">Features</a>
+        <a href="#install">Install</a>
+        <a href="#use-cases">Use Cases</a>
+        <a href="https://github.com/diogenesoftoronto/den" target="_blank" rel="noopener">GitHub</a>
+      </div>
+      <p class="footer-copy">
+        🧪 den — Built for developers who value reproducibility.<br>
+        Runtime choice should stay under your control.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

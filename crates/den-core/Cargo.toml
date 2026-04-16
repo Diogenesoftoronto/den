@@ -1,0 +1,24 @@
+[package]
+name = "den-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+sesame = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+which = { workspace = true }
+toml = { workspace = true }
+clap = { workspace = true, optional = true }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false, optional = true }
+
+[features]
+default = []
+cli = ["clap"]
+io = ["reqwest"]
+
+[dev-dependencies]
+proptest = "1"

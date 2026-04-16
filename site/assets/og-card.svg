@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#0D1117"/>
+  
+  <!-- Grid pattern -->
+  <defs>
+    <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+      <path d="M 60 0 L 0 0 0 60" fill="none" stroke="#21262D" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#grid)" opacity="0.5"/>
+  
+  <!-- Large decorative circle -->
+  <circle cx="900" cy="315" r="250" fill="none" stroke="#FF6B35" stroke-width="2" opacity="0.2"/>
+  <circle cx="900" cy="315" r="200" fill="none" stroke="#FF6B35" stroke-width="1" opacity="0.15"/>
+  <circle cx="900" cy="315" r="150" fill="none" stroke="#FF6B35" stroke-width="1" opacity="0.1"/>
+  
+  <!-- Scan lines -->
+  <defs>
+    <pattern id="scanlines" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="2" fill="#000000" opacity="0.1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#scanlines)" opacity="0.5"/>
+  
+  <!-- Content group -->
+  <g transform="translate(100, 180)">
+    <!-- Badge -->
+    <rect x="0" y="0" width="240" height="32" rx="6" fill="#161B22" stroke="#21262D" stroke-width="1"/>
+    <circle cx="16" cy="16" r="6" fill="#B5E48C"/>
+    <text x="34" y="21" font-family="SF Mono, Monaco, monospace" font-size="14" fill="#F4A261">SYSTEM ONLINE</text>
+    
+    <!-- Main title -->
+    <text x="0" y="140" font-family="system-ui, -apple-system, sans-serif" font-size="140" font-weight="800" fill="#E6EDF3">den</text>
+    
+    <!-- Tagline -->
+    <text x="0" y="200" font-family="system-ui, -apple-system, sans-serif" font-size="28" fill="#7D8597">Your Personal Cloud Lab</text>
+    
+    <!-- Description -->
+    <text x="0" y="250" font-family="SF Mono, Monaco, monospace" font-size="18" fill="#7D8597">Spin up cloud dev environments in seconds</text>
+  </g>
+  
+  <!-- Right side visual -->
+  <g transform="translate(750, 150)">
+    <!-- Terminal window -->
+    <rect x="0" y="0" width="380" height="280" rx="8" fill="#161B22" stroke="#21262D" stroke-width="1"/>
+    
+    <!-- Terminal header -->
+    <rect x="0" y="0" width="380" height="32" rx="8" fill="#21262D"/>
+    <circle cx="20" cy="16" r="6" fill="#E63946"/>
+    <circle cx="40" cy="16" r="6" fill="#F4A261"/>
+    <circle cx="60" cy="16" r="6" fill="#B5E48C"/>
+    <text x="280" y="21" font-family="SF Mono, Monaco, monospace" font-size="12" fill="#484F58" text-anchor="end">den@cloud ~ fish</text>
+    
+    <!-- Terminal content -->
+    <text x="20" y="70" font-family="SF Mono, Monaco, monospace" font-size="16" fill="#FF6B35">❯</text>
+    <text x="40" y="70" font-family="SF Mono, Monaco, monospace" font-size="16" fill="#E6EDF3">den spawn project</text>
+    
+    <text x="20" y="105" font-family="SF Mono, Monaco, monospace" font-size="14" fill="#7D8597">→ Creating runtime...</text>
+    <text x="20" y="130" font-family="SF Mono, Monaco, monospace" font-size="14" fill="#7D8597">→ Provisioning...</text>
+    <text x="20" y="155" font-family="SF Mono, Monaco, monospace" font-size="14" fill="#B5E48C">✓ Environment ready</text>
+    
+    <text x="20" y="200" font-family="SF Mono, Monaco, monospace" font-size="16" fill="#FF6B35">❯</text>
+    <text x="40" y="200" font-family="SF Mono, Monaco, monospace" font-size="16" fill="#E6EDF3">den connect project</text>
+    
+    <text x="20" y="235" font-family="SF Mono, Monaco, monospace" font-size="14" fill="#B5E48C">✓ Connected.</text>
+    
+    <text x="20" y="270" font-family="SF Mono, Monaco, monospace" font-size="16" fill="#FF6B35">❯</text>
+    <rect x="40" y="258" width="10" height="20" fill="#FF6B35">
+      <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  
+  <!-- Decorative elements -->
+  <rect x="80" y="500" width="60" height="2" fill="#FF6B35" opacity="0.5"/>
+  <rect x="80" y="510" width="40" height="2" fill="#FF6B35" opacity="0.3"/>
+  <rect x="80" y="520" width="20" height="2" fill="#FF6B35" opacity="0.2"/>
+</svg>

@@ -25,14 +25,15 @@ This favors depth over width and avoids brittle multi-call orchestration.
 Purpose: one-call provisioning workflow.
 
 Does all of this:
-- preflight checks (Sprite/project and optional sesame)
-- creates a Sprite environment
-- optionally makes the Sprite URL public
-- optionally adds a Porkbun URL forward via sesame
+- preflight checks for the selected runtime and any needed domain provider
+- creates a Sprite or Railway environment, depending on `runtime`
+- optionally publishes a hostname using DNS attachment, which is the default
+- optionally falls back to redirect-style forwarding when `domain_mode="forward"`
 
 Important:
-- the domain path here is forwarding, not canonical custom-host TLS on the Fly edge
-- if you need the real host to stay in the browser URL bar, that requires direct DNS plus edge certificate management outside the current MCP tool surface
+- domain ownership decides the domain provider: Cloudflare-held zones use Cloudflare, and Porkbun-held zones use sesame
+- DNS attachment is the canonical path when the selected runtime and domain provider support it
+- forwarding remains available as an explicit compatibility fallback
 
 ## 2. `operate_den`
 
@@ -42,12 +43,16 @@ Supported actions:
 - `list`
 - `destroy`
 - `domain`
+- `redeploy`
 - `status`
 
 Notes:
 - `destroy` requires `confirm_destroy=true`.
 - `domain` requires `custom_domain`.
-- `logs` and `redeploy` remain CLI-oriented Sprite workflows; `operate_den` does not currently expose the interactive session and checkpoint-restore behavior used by `den logs` and `den redeploy`.
+- `runtime` is accepted on both `provision_den` and `operate_den` so the caller can target Sprite or Railway explicitly.
+- `domain_mode` defaults to DNS attachment and can be set to `forward` for the redirect-style fallback.
+- `redeploy` is supported for Sprite and Railway.
+- `logs` remains a CLI-oriented Sprite workflow; `operate_den` does not currently expose the interactive session behavior used by `den logs`.
 
 ## 3. `diagnose_den`
 

@@ -1,6 +1,6 @@
 # den Roadmap
 
-Den is a self-deployable alternative to exe.dev, sprites, and shellbox. You own the stack — the Dockerfiles, the package manifests, the networking. This branch targets Sprite/Fly for environment lifecycle and sesame/Porkbun for domains.
+Den is a self-deployable alternative to exe.dev, sprites, and shellbox. You own the stack — the Dockerfiles, the package manifests, the networking. The current model separates runtime providers (`sprite` and `railway`) from domain providers selected by ownership (`cloudflare` or `sesame`/Porkbun).
 
 ## Current State (v0.2)
 
@@ -8,13 +8,13 @@ Den is a self-deployable alternative to exe.dev, sprites, and shellbox. You own 
 
 **Backends:** Nix (Determinate) and Guix (declarative Scheme)
 
-**Runtime access:** Sprite console, `sprite exec`, and public Sprite URLs
+**Runtime access:** Sprite console, `sprite exec`, Railway-backed runtimes, and custom hostnames attached by DNS or fallback forwarding
 
 **Config:** Dhall type-safe config → Guix Scheme + generated deploy artifacts; Python `infer_den_setup` for zero-config repo detection
 
-**Quality:** strict mypy, 49 pytest tests (Hypothesis property + CLI integration), Antithesis SDK workload, shell smoke suite, GitHub Actions CI
+**Quality:** strict mypy, 106 pytest tests (property, CLI, and MCP coverage), Antithesis SDK workload, shell smoke suite, GitHub Actions CI
 
-**MCP server:** `provision_den`, `operate_den`, `diagnose_den` workflows
+**MCP server:** `provision_den`, `operate_den`, `diagnose_den` workflows, with runtime-aware provisioning/operations
 
 ---
 
@@ -41,8 +41,12 @@ Den is a self-deployable alternative to exe.dev, sprites, and shellbox. You own 
 
 ## Phase 2: Public Access & Reverse Proxy
 
-### Sprite URL + Porkbun Forwarding
-Already implemented as `den funnel <name> [--off]` for auth mode changes and `den domain <name> host.example.com` for Porkbun URL forwarding via sesame.
+### Custom Domains
+`den funnel <name> [--off]` still controls Sprite URL auth mode. `den domain <name> host.example.com` now defaults to DNS attachment and selects the domain provider by ownership:
+
+- Cloudflare-held zones use Cloudflare for DNS management
+- Porkbun-held zones use sesame for Porkbun-managed domains
+- `--mode forward` keeps the redirect-style fallback available
 
 ### Caddy for HTTP Routing
 For dens that serve multiple web services or need to be accessed from other machines on the tailnet (or publicly), add Caddy as a lightweight reverse proxy inside the container.
@@ -52,22 +56,24 @@ For dens that serve multiple web services or need to be accessed from other mach
 - [ ] **Add Caddy to both Dockerfiles** — install the binary during build
 - [ ] **Default Caddyfile** — reverse proxy common dev ports (3000, 4000, 5173, 8000, 8080) on path-based or port-based routing
 - [ ] **`den proxy`** — CLI command to configure Caddy routes on a running den (SSH in and update Caddyfile)
-- [ ] **Sprite URL + Caddy** — expose one service cleanly behind the Sprite URL and optional Porkbun forwarding
+- [ ] **Sprite URL + Caddy** — expose one service cleanly behind the Sprite URL and optional forwarding or DNS attachment
 
 ### Use Cases
 - You're on your phone and want to check a running web app on your den → Sprite URL + Caddy
-- You want a friendly host name on a Porkbun zone → sesame URL forwarding
-- You want to share a prototype publicly → make the Sprite URL public, then add the forward
+- You want a friendly host name on a Cloudflare zone → native DNS attachment
+- You want a friendly host name on a Porkbun zone → sesame-managed DNS or forwarding, depending on the chosen mode
+- You want to share a prototype publicly → make the runtime public, then attach the hostname or fall back to forwarding
 
 ---
 
 ## Phase 3: Cloud-Agnostic Layer
 
-Sprite/Fly is the current provider. The goal is to keep provider concerns isolated so den can target multiple backends.
+Sprite/Fly and Railway are the current runtime providers. The goal is to keep runtime concerns isolated so den can target multiple backends and multiple domain authorities.
 
 ### Abstraction
 - [ ] **Provider interface** — define the minimal operations: create environment, open console, expose URL, add domain, get status, destroy
 - [ ] **Sprite provider** — wrap current Sprite CLI calls behind the interface
+- [ ] **Railway provider** — use Railway primitives directly for runtime lifecycle and hostname attachment
 - [ ] **Fly provider** — use native Fly primitives directly where Sprite is insufficient
 - [ ] **Hetzner provider** — for cheap, long-running dens on bare metal VPS
 - [ ] **Local Docker provider** — for testing and offline use (`docker compose` with the same Dockerfiles)
@@ -127,8 +133,8 @@ You (any machine)
   └── den CLI (Python/Typer via uv)
         ├── spawn/deploy/connect/exec/status/funnel/...
         ├── Dhall configs → Guix Scheme + deploy config
-        ├── sesame CLI → Porkbun domain forwarding
-        └── Provider (Sprite/Fly today, pluggable later)
+        ├── Domain provider → Cloudflare or sesame/Porkbun, selected by ownership
+        └── Runtime provider → Sprite/Fly or Railway
               └── Container (Fedora 42)
                     ├── Nix or Guix (with daemon)
                     ├── Caddy (reverse proxy) [planned]

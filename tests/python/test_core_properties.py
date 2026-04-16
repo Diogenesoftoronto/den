@@ -9,20 +9,37 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from den_cli.core import (
+    DnsRecord,
+    DomainProvider,
     DenPeer,
+    DomainMatch,
     InferredDenSetup,
     SpriteUrlInfo,
+    build_cloudflare_dns_records,
+    build_sesame_dns_create_command,
+    build_sesame_dns_edit_command,
+    build_sesame_dns_list_command,
+    build_sesame_url_forward_command,
     detect_project_markers,
     extract_den_peers,
+    extract_railway_linked_project_name,
+    parse_railway_service_statuses,
     find_checkpoint_version_in_api_output,
     find_checkpoint_version_in_list_output,
     infer_den_setup,
     infer_run_command,
     make_sprite_redeploy_comment,
     normalize_den_name,
+    parse_railway_projects,
     parse_sprite_url,
     parse_sprite_url_info,
+    railway_delete_command,
+    resolve_custom_domain,
+    railway_domain_attach_command,
+    railway_list_command,
+    railway_status_command,
     render_den_dhall,
+    sesame_dns_records_exist,
     short_den_name,
     split_custom_domain,
     sprite_command,
@@ -536,6 +553,228 @@ def test_split_custom_domain_handles_apex_domain() -> None:
     zone, subdomain = split_custom_domain("example.com", owned_domains=["example.com"])
     assert zone == "example.com"
     assert subdomain is None
+
+
+def test_resolve_custom_domain_prefers_longest_matching_provider_zone() -> None:
+    match = resolve_custom_domain(
+        "app.dev.example.com",
+        {
+            DomainProvider.cloudflare: ["example.com"],
+            DomainProvider.sesame: ["dev.example.com"],
+        },
+    )
+    assert match == DomainMatch(provider=DomainProvider.sesame, zone="dev.example.com", subdomain="app")
+
+
+def test_resolve_custom_domain_rejects_unknown_ownership() -> None:
+    try:
+        resolve_custom_domain(
+            "app.unknown.example",
+            {
+                DomainProvider.cloudflare: ["example.com"],
+                DomainProvider.sesame: ["dev.example.com"],
+            },
+        )
+    except ValueError as exc:
+        assert "Could not determine who holds" in str(exc)
+    else:
+        raise AssertionError("expected resolve_custom_domain to reject unknown ownership")
+
+
+def test_build_sesame_url_forward_command_uses_resolved_zone() -> None:
+    command = build_sesame_url_forward_command(
+        "app.dev.example.com",
+        "https://den-example.sprites.app",
+        ["example.com", "dev.example.com"],
+    )
+    assert command == [
+        "domain",
+        "add-url-forward",
+        "dev.example.com",
+        "--location",
+        "https://den-example.sprites.app",
+        "--type",
+        "permanent",
+        "--include-path",
+        "yes",
+        "--subdomain",
+        "app",
+    ]
+
+
+def test_build_sesame_dns_commands_handle_apex_and_subdomains() -> None:
+    subdomain_record = DnsRecord(type="CNAME", name="app", content="edge.railway.app")
+    apex_record = DnsRecord(type="TXT", name="@", content="railway-verify=abc123")
+
+    assert build_sesame_dns_list_command("example.com", subdomain_record) == [
+        "dns",
+        "list-by-name-type",
+        "example.com",
+        "--type",
+        "CNAME",
+        "--json",
+        "--subdomain",
+        "app",
+    ]
+    assert build_sesame_dns_create_command("example.com", subdomain_record) == [
+        "dns",
+        "create",
+        "example.com",
+        "--type",
+        "CNAME",
+        "--content",
+        "edge.railway.app",
+        "--json",
+        "--name",
+        "app",
+    ]
+    assert build_sesame_dns_edit_command("example.com", apex_record) == [
+        "dns",
+        "edit-by-name-type",
+        "example.com",
+        "--type",
+        "TXT",
+        "--content",
+        "railway-verify=abc123",
+        "--json",
+    ]
+
+
+def test_sesame_dns_records_exist_accepts_cli_payload_shapes() -> None:
+    assert sesame_dns_records_exist([{"id": "1"}]) is True
+    assert sesame_dns_records_exist({"records": [{"id": "1"}]}) is True
+    assert sesame_dns_records_exist([]) is False
+    assert sesame_dns_records_exist({"records": []}) is False
+
+
+def test_build_cloudflare_dns_records_prefers_cname_for_subdomain() -> None:
+    records = build_cloudflare_dns_records(
+        "app.example.com",
+        "example.com",
+        {
+            "cname": "den-myproject.fly.dev",
+            "ownership": {"name": "_fly-ownership.app.example.com", "app_value": "app-123"},
+        },
+        proxied=True,
+    )
+    assert records == [
+        DnsRecord(type="TXT", name="_fly-ownership.app", content="app-123"),
+        DnsRecord(type="CNAME", name="app", content="den-myproject.fly.dev", proxied=True),
+    ]
+
+
+def test_build_cloudflare_dns_records_uses_apex_a_and_aaaa() -> None:
+    records = build_cloudflare_dns_records(
+        "example.com",
+        "example.com",
+        {
+            "a": ["203.0.113.10"],
+            "aaaa": ["2001:db8::10"],
+            "ownership": {"name": "_fly-ownership.example.com", "app_value": "app-123"},
+        },
+    )
+    assert records == [
+        DnsRecord(type="TXT", name="_fly-ownership", content="app-123"),
+        DnsRecord(type="A", name="@", content="203.0.113.10", proxied=False),
+        DnsRecord(type="AAAA", name="@", content="2001:db8::10", proxied=False),
+    ]
+
+
+def test_railway_domain_attach_command_includes_service_and_port(monkeypatch) -> None:
+    monkeypatch.setattr("den_cli.core.resolve_railway_command", lambda: ["railway"])
+    command = railway_domain_attach_command("web", "app.example.com", port=8080)
+    assert command == ["railway", "domain", "app.example.com", "--service", "web", "--json", "--port", "8080"]
+
+
+def test_railway_status_and_list_commands_use_json(monkeypatch) -> None:
+    monkeypatch.setattr("den_cli.core.resolve_railway_command", lambda: ["railway"])
+    assert railway_status_command() == ["railway", "status", "--json"]
+    assert railway_list_command() == ["railway", "list", "--json"]
+
+
+def test_railway_delete_command_targets_explicit_project(monkeypatch) -> None:
+    monkeypatch.setattr("den_cli.core.resolve_railway_command", lambda: ["railway"])
+    assert railway_delete_command("den-demo") == ["railway", "delete", "-p", "den-demo", "-y", "--json"]
+
+
+def test_parse_railway_projects_extracts_project_metadata() -> None:
+    payload = [
+        {
+            "id": "proj-1",
+            "name": "den-alpha",
+            "workspace": {"name": "Main"},
+        },
+        {
+            "id": "proj-2",
+            "name": "other-project",
+            "workspace": {"name": "Main"},
+        },
+    ]
+
+    projects = parse_railway_projects(payload)
+
+    assert [(project.name, project.project_id, project.workspace_name) for project in projects] == [
+        ("den-alpha", "proj-1", "Main"),
+        ("other-project", "proj-2", "Main"),
+    ]
+
+
+def test_extract_railway_linked_project_name_prefers_nested_project_name() -> None:
+    payload = {"project": {"name": "den-linked"}}
+    assert extract_railway_linked_project_name(payload) == "den-linked"
+
+
+def test_extract_railway_linked_project_name_accepts_project_shaped_root_payload() -> None:
+    payload = {"name": "den-linked", "services": {}, "environments": {}}
+    assert extract_railway_linked_project_name(payload) == "den-linked"
+
+
+def test_parse_railway_service_statuses_extracts_service_summaries() -> None:
+    payload = {
+        "environments": {
+            "edges": [
+                {
+                    "node": {
+                        "serviceInstances": {
+                            "edges": [
+                                {
+                                    "node": {
+                                        "id": "inst-1",
+                                        "serviceId": "svc-1",
+                                        "serviceName": "dio-web",
+                                        "latestDeployment": {
+                                            "id": "dep-1",
+                                            "status": "SUCCESS",
+                                            "deploymentStopped": False,
+                                        },
+                                    }
+                                },
+                                {
+                                    "node": {
+                                        "id": "inst-2",
+                                        "serviceId": "svc-2",
+                                        "serviceName": "worker",
+                                        "latestDeployment": {
+                                            "id": "dep-2",
+                                            "status": "FAILED",
+                                            "deploymentStopped": True,
+                                        },
+                                    }
+                                },
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    }
+
+    services = parse_railway_service_statuses(payload)
+
+    assert [(entry.name, entry.latest_deployment_status, entry.deployment_stopped) for entry in services] == [
+        ("dio-web", "SUCCESS", False),
+        ("worker", "FAILED", True),
+    ]
 
 
 @given(HOST_SAFE_NAME, st.sampled_from(["public", "sprite"]))

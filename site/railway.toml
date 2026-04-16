@@ -1,0 +1,21 @@
+# Generated from den.dhall
+# Backend: nix
+# Name: site
+
+[build]
+dockerfilePath = "Dockerfile"
+
+[deploy]
+restartPolicyType = "ALWAYS"
+# healthcheckPath not set
+
+[deploy.env]
+DEN_NAME = "den-site"
+DEN_BACKEND = "nix"
+TAILSCALE_AUTHKEY = "TAILSCALE_AUTHKEY"
+
+[[deploy.volumes]]
+mount_path = "/workspace"
+size = "10Gi"
+
+
